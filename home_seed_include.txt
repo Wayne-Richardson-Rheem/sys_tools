@@ -1,0 +1,34 @@
+# home_seed_include.txt
+#
+# One relative path per line, rooted at /home/$REALUSER.
+# Only these paths will be copied when this file is non-empty.
+#
+# Rules:
+# - Use relative paths (no leading slash).
+# - Trailing '/' means directory contents.
+# - Lines starting with '#' are comments.
+# - Missing paths are skipped with a warning.
+
+# Core shell/user identity
+.bashrc
+.profile
+.bash_aliases
+.gitconfig
+.vimrc
+.vim/
+.venv/
+
+# SSH identity/config (remove if not desired on target)
+.ssh/
+
+# Small operational config dirs (optional)
+.config/git/
+.config/nvim/
+
+# Project/config payloads to keep on the image
+#sys_tools/
+#Documents/
+
+# Add your own application/work folders below
+# projects/recon-config/
+# notes/
