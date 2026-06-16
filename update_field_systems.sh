@@ -155,6 +155,11 @@ verify_runtime_checksum() {
     
     runtime_base=$(basename "$runtime_dir")
     
+    log "Checksum file contents:"
+    cat "$checksum_file" | head -3 | sed 's/^/  /'
+    log "Files in directory:"
+    ls -la "$(dirname "$checksum_file")" | grep -E "^-" | awk '{print "  " $NF}'
+    
     if sha256sum -c "$checksum_file" --ignore-missing >/dev/null 2>&1; then
         return 0
     fi
@@ -182,6 +187,9 @@ verify_runtime_checksum() {
         }
         { print }
     ' "$checksum_file" > "$normalized_file"
+    
+    log "Normalized checksum file:"
+    cat "$normalized_file" | head -3 | sed 's/^/  /'
     
     if sha256sum -c "$normalized_file" --ignore-missing >/dev/null 2>&1; then
         pass "Checksum verified (with path normalization)"
