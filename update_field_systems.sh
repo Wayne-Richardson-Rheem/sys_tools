@@ -131,6 +131,19 @@ if [[ ! -d "$MOUNT_POINT/logfile_xfr" ]]; then
 fi
 pass "Verified /data structure at $MOUNT_POINT"
 
+# Ensure stable runtime path for cron/systemd on live field systems.
+if [[ "$MOUNT_POINT" == "/data" ]]; then
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would create symlink: /opt/logfile_xfr -> /data/logfile_xfr"
+    else
+        sudo mkdir -p /opt
+        sudo ln -sfn /data/logfile_xfr /opt/logfile_xfr
+        pass "Ensured symlink /opt/logfile_xfr -> /data/logfile_xfr"
+    fi
+else
+    warn "Skipping /opt/logfile_xfr symlink update because target is mounted at $MOUNT_POINT"
+fi
+
 # Helper functions from harden_pi.sh
 github_api_get() {
     local endpoint="$1"
