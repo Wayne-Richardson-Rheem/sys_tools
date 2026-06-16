@@ -248,14 +248,25 @@ fetch_runtime_from_repo_files() {
     local release_url="$GITHUB_RAW_BASE/$repo/main/releases/v$version/${app_name}-${version}"
     local checksum_url="$GITHUB_RAW_BASE/$repo/main/releases/v$version/${app_name}-${version}.sha256"
     
+    log "Release URL: $release_url"
+    log "Checksum URL: $checksum_url"
+    
     log "Downloading $app_name checksum..."
     if ! github_raw_get "$checksum_url" > "$temp_stage/${app_name}.sha256"; then
         fatal "Failed to download checksum from $repo"
     fi
     
+    if [[ ! -s "$temp_stage/${app_name}.sha256" ]]; then
+        fatal "Checksum file is empty: $checksum_url"
+    fi
+    
     log "Downloading $app_name runtime..."
     if ! github_raw_get "$release_url" > "$temp_stage/$app_name"; then
         fatal "Failed to download $app_name from $repo"
+    fi
+    
+    if [[ ! -s "$temp_stage/$app_name" ]]; then
+        fatal "Downloaded binary is empty: $release_url"
     fi
     
     # Verify checksum
