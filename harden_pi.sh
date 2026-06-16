@@ -45,6 +45,8 @@ DEBUG_INIT_SRC="${DEBUG_INIT_SRC:-$REALHOME/sys_tools/debug-init.sh}"
 HOME_SEED_INCLUDE_FILE="${HOME_SEED_INCLUDE_FILE:-$REALHOME/sys_tools/home_seed_include.txt}"
 HOME_SEED_EXCLUDE_FILE="${HOME_SEED_EXCLUDE_FILE:-$REALHOME/sys_tools/home_seed_exclude.txt}"
 LAPTOPKILLER_SRC="${LAPTOPKILLER_SRC:-$REALHOME/Dev/LaptopKiller}"
+EXPANDER_SRC="${EXPANDER_SRC:-$REALHOME/Dev/Expander}"
+LOGFILE_XFR_SRC="${LOGFILE_XFR_SRC:-$REALHOME/Dev/LogFileXfr}"
 
 
 ###############################################################################
@@ -882,6 +884,8 @@ sudo chmod 755 "$BUILD_ROOT/home"
 sudo chown "$TARGET_UID:$TARGET_GID" "$BUILD_ROOT/home/$REALUSER"
 sudo chmod 755 "$BUILD_ROOT/home/$REALUSER"
 sudo ln -sfn /data/laptopkiller "$BUILD_ROOT/opt/laptopkiller"
+sudo ln -sfn /data/expander "$BUILD_ROOT/opt/expander"
+sudo ln -sfn /data/logfile_xfr "$BUILD_ROOT/opt/logfile_xfr"
 
 # Machine identity reset
 sudo rm -f "$BUILD_ROOT/etc/machine-id"
@@ -1585,6 +1589,40 @@ sudo chmod 755 "$DATA_MNT/laptopkiller/runtime" "$DATA_MNT/laptopkiller/runtime/
 info "Laptop Killer app path permissions on data partition:"
 sudo stat -c '%A %u:%g %n' "$DATA_MNT/laptopkiller" "$DATA_MNT/laptopkiller/runtime" "$DATA_MNT/laptopkiller/runtime/logs" 2>/dev/null || true
 
+###############################################################################
+# Seed Expander app runtime into /data
+###############################################################################
+info "Seeding Expander app into /data/expander..."
+sudo mkdir -p "$DATA_MNT/expander/runtime/bin" "$DATA_MNT/expander/logs"
+
+if [[ -f "$EXPANDER_SRC/runtime/bin/expander" ]]; then
+  sudo cp -f "$EXPANDER_SRC/runtime/bin/expander" "$DATA_MNT/expander/runtime/bin/expander"
+  sudo chmod 755 "$DATA_MNT/expander/runtime/bin/expander"
+else
+  warn "Expander runtime binary not found at $EXPANDER_SRC/runtime/bin/expander"
+fi
+
+sudo chown -R "$TARGET_UID:$TARGET_GID" "$DATA_MNT/expander"
+sudo find "$DATA_MNT/expander" -type d -exec chmod 755 {} +
+sudo chmod 755 "$DATA_MNT/expander/runtime" "$DATA_MNT/expander/runtime/bin" "$DATA_MNT/expander/logs" 2>/dev/null || true
+
+###############################################################################
+# Seed LogFileXfr app runtime into /data
+###############################################################################
+info "Seeding LogFileXfr app into /data/logfile_xfr..."
+sudo mkdir -p "$DATA_MNT/logfile_xfr/runtime/bin" "$DATA_MNT/logfile_xfr/logs"
+
+if [[ -f "$LOGFILE_XFR_SRC/runtime/bin/logfile_xfr" ]]; then
+  sudo cp -f "$LOGFILE_XFR_SRC/runtime/bin/logfile_xfr" "$DATA_MNT/logfile_xfr/runtime/bin/logfile_xfr"
+  sudo chmod 755 "$DATA_MNT/logfile_xfr/runtime/bin/logfile_xfr"
+else
+  warn "LogFileXfr runtime binary not found at $LOGFILE_XFR_SRC/runtime/bin/logfile_xfr"
+fi
+
+sudo chown -R "$TARGET_UID:$TARGET_GID" "$DATA_MNT/logfile_xfr"
+sudo find "$DATA_MNT/logfile_xfr" -type d -exec chmod 755 {} +
+sudo chmod 755 "$DATA_MNT/logfile_xfr/runtime" "$DATA_MNT/logfile_xfr/runtime/bin" "$DATA_MNT/logfile_xfr/logs" 2>/dev/null || true
+
 # NOTE:
 #  - Do NOT copy /boot here
 #  - /boot is populated exactly ONCE in Step 5
@@ -1661,7 +1699,11 @@ fi
 [ -d "$BUILD_ROOT/home/$REALUSER" ] || fatal "/home/$REALUSER missing in BUILD_ROOT"
 [ -d "$DATA_MNT/home/$REALUSER" ] || fatal "/data/home/$REALUSER missing"
 [ -L "$BUILD_ROOT/opt/laptopkiller" ] || fatal "/opt/laptopkiller symlink missing in BUILD_ROOT"
+[ -L "$BUILD_ROOT/opt/expander" ] || fatal "/opt/expander symlink missing in BUILD_ROOT"
+[ -L "$BUILD_ROOT/opt/logfile_xfr" ] || fatal "/opt/logfile_xfr symlink missing in BUILD_ROOT"
 [ -d "$DATA_MNT/laptopkiller" ] || fatal "/data/laptopkiller missing"
+[ -d "$DATA_MNT/expander" ] || fatal "/data/expander missing"
+[ -d "$DATA_MNT/logfile_xfr" ] || fatal "/data/logfile_xfr missing"
 
 
 
