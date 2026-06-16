@@ -15,6 +15,10 @@
 #   EXPANDER_GH_REPO           GitHub repo (default: Wayne-Richardson-Rheem/Expander-Releases)
 #   LOGFILE_XFR_RELEASE_TAG    Version tag (default: latest)
 #   EXPANDER_RELEASE_TAG       Version tag (default: latest)
+#   LOGFILE_XFR_OTA_PUBKEY_URL OTA public key URL (optional)
+#   EXPANDER_OTA_PUBKEY_URL    OTA public key URL (optional)
+#   LOGFILE_XFR_OTA_ENABLE_TIMER Enable LogFileXfr OTA timer (1/0)
+#   EXPANDER_OTA_ENABLE_TIMER  Enable Expander OTA timer (1/0)
 #   GITHUB_TOKEN               GitHub PAT for private repos (optional)
 #   DRY_RUN                    Set to 1 to show what would happen without making changes
 #
@@ -34,9 +38,16 @@ LOGFILE_XFR_GH_REPO="${LOGFILE_XFR_GH_REPO:-Wayne-Richardson-Rheem/LogFileXfr-Re
 EXPANDER_GH_REPO="${EXPANDER_GH_REPO:-Wayne-Richardson-Rheem/Expander-Releases}"
 LOGFILE_XFR_RELEASE_TAG="${LOGFILE_XFR_RELEASE_TAG:-latest}"
 EXPANDER_RELEASE_TAG="${EXPANDER_RELEASE_TAG:-latest}"
+LOGFILE_XFR_OTA_PUBKEY_URL="${LOGFILE_XFR_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr-Releases/main/logfile_xfr_ota_pubkey.asc}"
+EXPANDER_OTA_PUBKEY_URL="${EXPANDER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander-Releases/main/expander_ota_pubkey.asc}"
+LOGFILE_XFR_OTA_ENABLE_TIMER="${LOGFILE_XFR_OTA_ENABLE_TIMER:-1}"
+EXPANDER_OTA_ENABLE_TIMER="${EXPANDER_OTA_ENABLE_TIMER:-1}"
 GITHUB_API_BASE="https://api.github.com/repos"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com"
 DRY_RUN="${DRY_RUN:-0}"
+
+LOGFILE_XFR_VERSION=""
+EXPANDER_VERSION=""
 
 # Get script directory (safely handle piped execution where BASH_SOURCE is unset)
 SCRIPT_DIR=""
@@ -222,6 +233,7 @@ verify_runtime_checksum() {
 stage_runtime_payload() {
     local src_payload="$1"
     local dest_dir="$2"
+    local version="$3"
     local app_name
     
     app_name=$(basename "$dest_dir")
@@ -237,12 +249,14 @@ stage_runtime_payload() {
     else
         log "Copying $app_name binary..."
         mkdir -p "$dest_dir/runtime/bin"
+        local versioned_name="$app_name-$version"
         if [[ "$DRY_RUN" == "1" ]]; then
-            log "[DRY_RUN] Would copy: $src_payload -> $dest_dir/runtime/bin/$app_name"
+            log "[DRY_RUN] Would copy: $src_payload -> $dest_dir/runtime/bin/$versioned_name"
+            log "[DRY_RUN] Would set symlink: $dest_dir/runtime/bin/$app_name -> $versioned_name"
         else
-            rm -f "$dest_dir/runtime/bin/$app_name"
-            cp "$src_payload" "$dest_dir/runtime/bin/$app_name"
-            chmod 755 "$dest_dir/runtime/bin/$app_name"
+            cp "$src_payload" "$dest_dir/runtime/bin/$versioned_name"
+            chmod 755 "$dest_dir/runtime/bin/$versioned_name"
+            ln -sfn "$versioned_name" "$dest_dir/runtime/bin/$app_name"
         fi
     fi
     pass "Staged $app_name runtime"
@@ -259,9 +273,14 @@ fetch_runtime_from_repo_files() {
     owner="${repo%%/*}"
     repo_name="${repo##*/}"
 
-    # Get latest release tag from GitHub Releases API
-    log "Fetching latest release for $app_name from $repo..."
-    api_url="https://api.github.com/repos/$repo/releases/latest"
+    # Resolve release endpoint from requested tag.
+    log "Fetching release metadata for $app_name from $repo..."
+    if [[ "$tag" == "latest" ]]; then
+        api_url="https://api.github.com/repos/$repo/releases/latest"
+    else
+        api_url="https://api.github.com/repos/$repo/releases/tags/$tag"
+    fi
+
     version=$(curl -sSf "$api_url" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
 
     if [[ -z "$version" ]]; then
@@ -272,7 +291,7 @@ fetch_runtime_from_repo_files() {
 
     # Download assets from GitHub Release
     local assets_json
-    assets_json=$(curl -sSf "https://api.github.com/repos/$repo/releases/latest" | \
+    assets_json=$(curl -sSf "$api_url" | \
         python3 -c "import sys,json; [print(a['browser_download_url']) for a in json.load(sys.stdin)['assets']]")
 
     local release_url checksum_url
@@ -310,6 +329,348 @@ fetch_runtime_from_repo_files() {
     cd - >/dev/null
 
     pass "Downloaded and verified $app_name version $version"
+
+    if [[ "$app_name" == "logfile_xfr" ]]; then
+        LOGFILE_XFR_VERSION="$version"
+    elif [[ "$app_name" == "expander" ]]; then
+        EXPANDER_VERSION="$version"
+    fi
+}
+
+install_logfile_xfr_ota() {
+    local dest_dir="$1"
+    local ota_dir="$dest_dir/runtime/ota"
+    local key_dir="$ota_dir/keys"
+    local ota_script="$dest_dir/runtime/bin/ota.sh"
+    local key_file="$key_dir/logfile_xfr_ota_pubkey.asc"
+    local local_pubkey="$SCRIPT_DIR/logfile_xfr_ota_pubkey.asc"
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would ensure OTA directories: $ota_dir and $key_dir"
+        log "[DRY_RUN] Would install OTA updater script at $ota_script"
+    else
+        sudo mkdir -p "$ota_dir" "$key_dir" "$dest_dir/runtime/bin"
+        cat > "$TEMP_DIR/ota.sh" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+BIN="logfile_xfr"
+
+RUNTIME="${RUNTIME:-/opt/logfile_xfr/runtime}"
+BIN_DIR="$RUNTIME/bin"
+OTA_DIR="$RUNTIME/ota"
+KEY_DIR="$OTA_DIR/keys"
+
+BASE_URL="https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr-Releases/main/releases"
+
+mkdir -p "$OTA_DIR"
+cd "$OTA_DIR"
+
+if [[ ! -x "$BIN_DIR/$BIN" ]]; then
+  echo "[OTA] ERROR: $BIN_DIR/$BIN does not exist or is not executable"
+  exit 1
+fi
+
+CURRENT_VERSION="$($BIN_DIR/$BIN --version | tr -d '\n\r')"
+echo "[OTA] Current version: $CURRENT_VERSION"
+
+echo "[OTA] Checking for update..."
+LATEST_VERSION="$(curl -fsSL "$BASE_URL/../latest.txt" | tr -d '\n\r')"
+echo "[OTA] Latest available version: $LATEST_VERSION"
+
+if [[ "$LATEST_VERSION" == "$CURRENT_VERSION" ]]; then
+  echo "[OTA] Already up to date ($CURRENT_VERSION)"
+  exit 0
+fi
+
+VERSION="$LATEST_VERSION"
+BIN_FILE="$BIN-$VERSION"
+VERSION_DIR="$BASE_URL/v$VERSION"
+
+echo "[OTA] Downloading v$VERSION..."
+curl -fsSLO "$VERSION_DIR/$BIN_FILE"
+curl -fsSLO "$VERSION_DIR/$BIN_FILE.sha256"
+curl -fsSLO "$VERSION_DIR/$BIN_FILE.sha256.asc"
+
+echo "[OTA] Verifying signature..."
+gpg --batch --no-default-keyring \
+  --keyring "$OTA_DIR/ota-keyring.gpg" \
+  --import "$KEY_DIR/logfile_xfr_ota_pubkey.asc" >/dev/null 2>&1 || true
+
+gpg --batch --no-default-keyring \
+  --keyring "$OTA_DIR/ota-keyring.gpg" \
+  --verify "$BIN_FILE.sha256.asc" "$BIN_FILE.sha256"
+
+echo "[OTA] Verifying checksum..."
+awk -v bin="$BIN_FILE" '{print $1 "  " bin}' "$BIN_FILE.sha256" | sha256sum -c -
+
+echo "[OTA] Saving rollback version..."
+echo "$CURRENT_VERSION" > "$OTA_DIR/last-good"
+
+echo "[OTA] Installing new binary..."
+install -m 755 "$BIN_FILE" "$BIN_DIR/$BIN_FILE"
+
+echo "[OTA] Switching symlink..."
+ln -sfn "$BIN_FILE" "$BIN_DIR/$BIN"
+
+echo "[OTA] Running smoke test..."
+NEW_VERSION="$($BIN_DIR/$BIN --version | tr -d '\n\r')" || true
+
+if [[ "$NEW_VERSION" != "$VERSION" ]]; then
+  echo "[OTA] Smoke test failed - rolling back"
+  OLD_VERSION="$(cat "$OTA_DIR/last-good")"
+  ln -sfn "$BIN-$OLD_VERSION" "$BIN_DIR/$BIN"
+  exit 1
+fi
+
+echo "[OTA] Update successful ($VERSION)"
+EOF
+        sudo install -m 755 "$TEMP_DIR/ota.sh" "$ota_script"
+    fi
+
+    if [[ -f "$local_pubkey" ]]; then
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "[DRY_RUN] Would install OTA pubkey from $local_pubkey to $key_file"
+        else
+            sudo install -m 644 "$local_pubkey" "$key_file"
+        fi
+    else
+        warn "Local OTA pubkey not found at $local_pubkey; trying URL"
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "[DRY_RUN] Would download OTA pubkey from $LOGFILE_XFR_OTA_PUBKEY_URL to $key_file"
+        else
+            if ! curl -fsSL "$LOGFILE_XFR_OTA_PUBKEY_URL" | sudo tee "$key_file" >/dev/null; then
+                warn "Could not download OTA pubkey; OTA updates will fail signature verification until key is installed"
+            fi
+            sudo chmod 644 "$key_file" 2>/dev/null || true
+        fi
+    fi
+
+    pass "Configured LogFileXfr OTA assets"
+}
+
+install_logfile_xfr_ota_timer() {
+    if [[ "$LOGFILE_XFR_OTA_ENABLE_TIMER" != "1" ]]; then
+        log "Skipping OTA timer setup (LOGFILE_XFR_OTA_ENABLE_TIMER=$LOGFILE_XFR_OTA_ENABLE_TIMER)"
+        return 0
+    fi
+
+    if [[ "$MOUNT_POINT" != "/data" ]]; then
+        warn "Skipping OTA timer setup because target is mounted at $MOUNT_POINT"
+        return 0
+    fi
+
+    local svc_path="/etc/systemd/system/logfile-xfr-ota.service"
+    local timer_path="/etc/systemd/system/logfile-xfr-ota.timer"
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would install $svc_path"
+        log "[DRY_RUN] Would install $timer_path"
+        log "[DRY_RUN] Would run: systemctl daemon-reload && systemctl enable --now logfile-xfr-ota.timer"
+        return 0
+    fi
+
+    cat > "$TEMP_DIR/logfile-xfr-ota.service" <<'EOF'
+[Unit]
+Description=LogFileXfr OTA Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=RUNTIME=/opt/logfile_xfr/runtime
+ExecStart=/opt/logfile_xfr/runtime/bin/ota.sh
+User=root
+Group=root
+EOF
+
+    cat > "$TEMP_DIR/logfile-xfr-ota.timer" <<'EOF'
+[Unit]
+Description=Run LogFileXfr OTA Update Daily
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=24h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    sudo install -m 644 "$TEMP_DIR/logfile-xfr-ota.service" "$svc_path"
+    sudo install -m 644 "$TEMP_DIR/logfile-xfr-ota.timer" "$timer_path"
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now logfile-xfr-ota.timer
+
+    pass "Enabled logfile-xfr-ota.timer"
+}
+
+install_expander_ota() {
+    local dest_dir="$1"
+    local ota_dir="$dest_dir/runtime/ota"
+    local key_dir="$ota_dir/keys"
+    local ota_script="$dest_dir/runtime/bin/ota.sh"
+    local key_file="$key_dir/expander_ota_pubkey.asc"
+    local local_pubkey="$SCRIPT_DIR/expander_ota_pubkey.asc"
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would ensure OTA directories: $ota_dir and $key_dir"
+        log "[DRY_RUN] Would install OTA updater script at $ota_script"
+    else
+        sudo mkdir -p "$ota_dir" "$key_dir" "$dest_dir/runtime/bin"
+        cat > "$TEMP_DIR/expander_ota.sh" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+BIN="expander"
+
+RUNTIME="${RUNTIME:-/opt/expander/runtime}"
+BIN_DIR="$RUNTIME/bin"
+OTA_DIR="$RUNTIME/ota"
+KEY_DIR="$OTA_DIR/keys"
+
+BASE_URL="https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander-Releases/main/releases"
+
+mkdir -p "$OTA_DIR"
+cd "$OTA_DIR"
+
+if [[ ! -x "$BIN_DIR/$BIN" ]]; then
+  echo "[OTA] ERROR: $BIN_DIR/$BIN does not exist or is not executable"
+  exit 1
+fi
+
+CURRENT_VERSION="$($BIN_DIR/$BIN --version | tr -d '\n\r')"
+echo "[OTA] Current version: $CURRENT_VERSION"
+
+echo "[OTA] Checking for update..."
+LATEST_VERSION="$(curl -fsSL "$BASE_URL/../latest.txt" | tr -d '\n\r')"
+echo "[OTA] Latest available version: $LATEST_VERSION"
+
+if [[ "$LATEST_VERSION" == "$CURRENT_VERSION" ]]; then
+  echo "[OTA] Already up to date ($CURRENT_VERSION)"
+  exit 0
+fi
+
+VERSION="$LATEST_VERSION"
+BIN_FILE="$BIN-$VERSION"
+VERSION_DIR="$BASE_URL/v$VERSION"
+
+echo "[OTA] Downloading v$VERSION..."
+curl -fsSLO "$VERSION_DIR/$BIN_FILE"
+curl -fsSLO "$VERSION_DIR/$BIN_FILE.sha256"
+curl -fsSLO "$VERSION_DIR/$BIN_FILE.sha256.asc"
+
+echo "[OTA] Verifying signature..."
+gpg --batch --no-default-keyring \
+  --keyring "$OTA_DIR/ota-keyring.gpg" \
+  --import "$KEY_DIR/expander_ota_pubkey.asc" >/dev/null 2>&1 || true
+
+gpg --batch --no-default-keyring \
+  --keyring "$OTA_DIR/ota-keyring.gpg" \
+  --verify "$BIN_FILE.sha256.asc" "$BIN_FILE.sha256"
+
+echo "[OTA] Verifying checksum..."
+awk -v bin="$BIN_FILE" '{print $1 "  " bin}' "$BIN_FILE.sha256" | sha256sum -c -
+
+echo "[OTA] Saving rollback version..."
+echo "$CURRENT_VERSION" > "$OTA_DIR/last-good"
+
+echo "[OTA] Installing new binary..."
+install -m 755 "$BIN_FILE" "$BIN_DIR/$BIN_FILE"
+
+echo "[OTA] Switching symlink..."
+ln -sfn "$BIN_FILE" "$BIN_DIR/$BIN"
+
+echo "[OTA] Running smoke test..."
+NEW_VERSION="$($BIN_DIR/$BIN --version | tr -d '\n\r')" || true
+
+if [[ "$NEW_VERSION" != "$VERSION" ]]; then
+  echo "[OTA] Smoke test failed - rolling back"
+  OLD_VERSION="$(cat "$OTA_DIR/last-good")"
+  ln -sfn "$BIN-$OLD_VERSION" "$BIN_DIR/$BIN"
+  exit 1
+fi
+
+echo "[OTA] Update successful ($VERSION)"
+EOF
+        sudo install -m 755 "$TEMP_DIR/expander_ota.sh" "$ota_script"
+    fi
+
+    if [[ -f "$local_pubkey" ]]; then
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "[DRY_RUN] Would install OTA pubkey from $local_pubkey to $key_file"
+        else
+            sudo install -m 644 "$local_pubkey" "$key_file"
+        fi
+    else
+        warn "Local OTA pubkey not found at $local_pubkey; trying URL"
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "[DRY_RUN] Would download OTA pubkey from $EXPANDER_OTA_PUBKEY_URL to $key_file"
+        else
+            if ! curl -fsSL "$EXPANDER_OTA_PUBKEY_URL" | sudo tee "$key_file" >/dev/null; then
+                warn "Could not download OTA pubkey; OTA updates will fail signature verification until key is installed"
+            fi
+            sudo chmod 644 "$key_file" 2>/dev/null || true
+        fi
+    fi
+
+    pass "Configured Expander OTA assets"
+}
+
+install_expander_ota_timer() {
+    if [[ "$EXPANDER_OTA_ENABLE_TIMER" != "1" ]]; then
+        log "Skipping OTA timer setup (EXPANDER_OTA_ENABLE_TIMER=$EXPANDER_OTA_ENABLE_TIMER)"
+        return 0
+    fi
+
+    if [[ "$MOUNT_POINT" != "/data" ]]; then
+        warn "Skipping OTA timer setup because target is mounted at $MOUNT_POINT"
+        return 0
+    fi
+
+    local svc_path="/etc/systemd/system/expander-ota.service"
+    local timer_path="/etc/systemd/system/expander-ota.timer"
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would install $svc_path"
+        log "[DRY_RUN] Would install $timer_path"
+        log "[DRY_RUN] Would run: systemctl daemon-reload && systemctl enable --now expander-ota.timer"
+        return 0
+    fi
+
+    cat > "$TEMP_DIR/expander-ota.service" <<'EOF'
+[Unit]
+Description=Expander OTA Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=RUNTIME=/opt/expander/runtime
+ExecStart=/opt/expander/runtime/bin/ota.sh
+User=root
+Group=root
+EOF
+
+    cat > "$TEMP_DIR/expander-ota.timer" <<'EOF'
+[Unit]
+Description=Run Expander OTA Update Daily
+
+[Timer]
+OnBootSec=7min
+OnUnitActiveSec=24h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    sudo install -m 644 "$TEMP_DIR/expander-ota.service" "$svc_path"
+    sudo install -m 644 "$TEMP_DIR/expander-ota.timer" "$timer_path"
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now expander-ota.timer
+
+    pass "Enabled expander-ota.timer"
 }
 
 # Create temporary staging directory
@@ -320,7 +681,8 @@ log "Using temporary directory: $TEMP_DIR"
 log ""
 log "=== Updating LogFileXfr ==="
 fetch_runtime_from_repo_files "$LOGFILE_XFR_GH_REPO" "$LOGFILE_XFR_RELEASE_TAG" "logfile_xfr" "$TEMP_DIR"
-stage_runtime_payload "$TEMP_DIR/logfile_xfr" "$MOUNT_POINT/logfile_xfr"
+stage_runtime_payload "$TEMP_DIR/logfile_xfr" "$MOUNT_POINT/logfile_xfr" "$LOGFILE_XFR_VERSION"
+install_logfile_xfr_ota "$MOUNT_POINT/logfile_xfr"
 
 if [[ "$DRY_RUN" != "1" ]]; then
     # Ensure app data is writable by the invoking non-root user.
@@ -336,7 +698,8 @@ fi
 log ""
 log "=== Updating Expander ==="
 fetch_runtime_from_repo_files "$EXPANDER_GH_REPO" "$EXPANDER_RELEASE_TAG" "expander" "$TEMP_DIR"
-stage_runtime_payload "$TEMP_DIR/expander" "$MOUNT_POINT/expander"
+stage_runtime_payload "$TEMP_DIR/expander" "$MOUNT_POINT/expander" "$EXPANDER_VERSION"
+install_expander_ota "$MOUNT_POINT/expander"
 
 if [[ "$DRY_RUN" != "1" ]]; then
     # Ensure app data is writable by the invoking non-root user.
@@ -376,6 +739,9 @@ else
         file "$MOUNT_POINT/expander/runtime/bin/expander" || warn "Could not verify expander binary type"
     fi
 fi
+
+install_logfile_xfr_ota_timer
+install_expander_ota_timer
 
 log ""
 pass "=== Update Complete ==="
