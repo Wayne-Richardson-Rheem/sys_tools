@@ -212,6 +212,7 @@ stage_runtime_payload() {
         if [[ "$DRY_RUN" == "1" ]]; then
             log "[DRY_RUN] Would copy: $src_payload -> $dest_dir/runtime/bin/$app_name"
         else
+            rm -f "$dest_dir/runtime/bin/$app_name"
             cp "$src_payload" "$dest_dir/runtime/bin/$app_name"
             chmod 755 "$dest_dir/runtime/bin/$app_name"
         fi
