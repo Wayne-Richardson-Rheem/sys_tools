@@ -155,11 +155,6 @@ verify_runtime_checksum() {
     
     runtime_base=$(basename "$runtime_dir")
     
-    log "Checksum file contents:"
-    cat "$checksum_file" | head -3 | sed 's/^/  /'
-    log "Files in directory:"
-    ls -la "$(dirname "$checksum_file")" | grep -E "^-" | awk '{print "  " $NF}'
-    
     if sha256sum -c "$checksum_file" --ignore-missing >/dev/null 2>&1; then
         return 0
     fi
@@ -187,9 +182,6 @@ verify_runtime_checksum() {
         }
         { print }
     ' "$checksum_file" > "$normalized_file"
-    
-    log "Normalized checksum file:"
-    cat "$normalized_file" | head -3 | sed 's/^/  /'
     
     if sha256sum -c "$normalized_file" --ignore-missing >/dev/null 2>&1; then
         pass "Checksum verified (with path normalization)"
@@ -247,9 +239,6 @@ fetch_runtime_from_repo_files() {
     # Download from releases/vX.Y.Z/
     local release_url="$GITHUB_RAW_BASE/$repo/main/releases/v$version/${app_name}-${version}"
     local checksum_url="$GITHUB_RAW_BASE/$repo/main/releases/v$version/${app_name}-${version}.sha256"
-    
-    log "Release URL: $release_url"
-    log "Checksum URL: $checksum_url"
     
     log "Downloading $app_name checksum..."
     if ! github_raw_get "$checksum_url" > "$temp_stage/${app_name}.sha256"; then
