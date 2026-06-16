@@ -50,6 +50,11 @@ if [[ -z "$SCRIPT_DIR" ]]; then
 fi
 TEMP_DIR="/tmp/update_field_$RANDOM"
 MOUNT_POINT=""
+APP_OWNER="${SUDO_USER:-}"
+
+if [[ -z "$APP_OWNER" || "$APP_OWNER" == "root" ]]; then
+    APP_OWNER="${USER:-}"
+fi
 
 # Logging functions
 log() {
@@ -311,9 +316,11 @@ fetch_runtime_from_repo_files "$LOGFILE_XFR_GH_REPO" "$LOGFILE_XFR_RELEASE_TAG" 
 stage_runtime_payload "$TEMP_DIR/logfile_xfr" "$MOUNT_POINT/logfile_xfr"
 
 if [[ "$DRY_RUN" != "1" ]]; then
-    # Change ownership to pi user if it exists, otherwise leave as is
-    if id pi >/dev/null 2>&1; then
-        sudo chown -R pi:pi "$MOUNT_POINT/logfile_xfr" 2>/dev/null || true
+    # Ensure app data is writable by the invoking non-root user.
+    if id "$APP_OWNER" >/dev/null 2>&1 && [[ "$APP_OWNER" != "root" ]]; then
+        sudo chown -R "$APP_OWNER:$APP_OWNER" "$MOUNT_POINT/logfile_xfr" 2>/dev/null || true
+    else
+        warn "Could not resolve non-root owner; leaving logfile_xfr ownership unchanged"
     fi
     chmod 755 "$MOUNT_POINT/logfile_xfr/runtime" "$MOUNT_POINT/logfile_xfr/runtime/bin" 2>/dev/null || true
 fi
@@ -325,9 +332,11 @@ fetch_runtime_from_repo_files "$EXPANDER_GH_REPO" "$EXPANDER_RELEASE_TAG" "expan
 stage_runtime_payload "$TEMP_DIR/expander" "$MOUNT_POINT/expander"
 
 if [[ "$DRY_RUN" != "1" ]]; then
-    # Change ownership to pi user if it exists, otherwise leave as is
-    if id pi >/dev/null 2>&1; then
-        sudo chown -R pi:pi "$MOUNT_POINT/expander" 2>/dev/null || true
+    # Ensure app data is writable by the invoking non-root user.
+    if id "$APP_OWNER" >/dev/null 2>&1 && [[ "$APP_OWNER" != "root" ]]; then
+        sudo chown -R "$APP_OWNER:$APP_OWNER" "$MOUNT_POINT/expander" 2>/dev/null || true
+    else
+        warn "Could not resolve non-root owner; leaving expander ownership unchanged"
     fi
     chmod 755 "$MOUNT_POINT/expander/runtime" "$MOUNT_POINT/expander/runtime/bin" 2>/dev/null || true
 fi
