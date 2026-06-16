@@ -1,0 +1,13 @@
+[Unit]
+Description=Wi-Fi Watchdog + Monitor (journalctl only)
+After=network.target NetworkManager.service
+Wants=network.target
+
+[Service]
+ExecStart=/home/rheemtest/sys_tools/wifi_watchdog.sh
+Restart=always
+RestartSec=60
+User=root
+
+[Install]
+WantedBy=multi-user.target

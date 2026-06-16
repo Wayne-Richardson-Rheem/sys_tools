@@ -1,0 +1,14 @@
+[Unit]
+Description=Watchdog for cellular MODEM (eth0)
+After=NetworkManager.service
+Requires=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/modem-interface.sh
+Restart=no
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+

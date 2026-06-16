@@ -1,0 +1,15 @@
+[Unit]
+Description=SIM7080 Modem Setup Service
+After=network.target
+Before=network_fallback.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/home/rheemtest/Dev/Sim7080Setup/bin/sim70xx_setup
+RemainAfterExit=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

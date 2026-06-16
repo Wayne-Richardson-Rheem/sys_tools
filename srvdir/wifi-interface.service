@@ -1,0 +1,15 @@
+[Unit]
+Description=Wi-Fi Setup (STA + AP fallback)
+Wants=NetworkManager.service
+After=NetworkManager.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=idle
+ExecStart=/usr/local/bin/wifi-interface.sh
+Restart=no
+Environment=NM_CONNECTION_TIMEOUT=60
+
+[Install]
+WantedBy=multi-user.target
+

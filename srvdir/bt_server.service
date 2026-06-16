@@ -1,0 +1,19 @@
+[Unit]
+Description=Run /home/rheemtest/BTServer/bin/bt_server Program After bluetooth_startup.sh
+After=network.target
+Requires=network.target
+
+[Service]
+# Wait until /tmp/bt_startup_done exists set when /home/rheemtest/tools/bluetooth_startup.sh completes
+ExecStartPre=/bin/bash -c 'while [ ! -f /run/bt_startup_done ]; do sleep 1; done'
+
+Type=oneshot
+User=rheemtest
+ExecStart=/home/rheemtest/Dev/BTServer/bin/bt_server
+RemainAfterExit=true
+WorkingDirectory=/home/rheemtest/Dev/BTServer/bin
+
+
+[Install]
+WantedBy=multi-user.target
+

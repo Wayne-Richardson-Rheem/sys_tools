@@ -1,0 +1,8 @@
+# /etc/systemd/system/wifi-config.service
+[Unit]
+Description=Apply Wi-Fi Configuration
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/check-for-wifi.sh

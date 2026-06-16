@@ -1,0 +1,20 @@
+[Unit]
+Description=Start Laptop Killer Program
+#After=sim7080_setup.service bt_server.service
+After=bt_server.service
+Requires=bt_server.service
+
+[Service]
+StandardOutput=null
+StandardError=null
+Type=simple
+User=rheemtest
+ExecStart=/home/rheemtest/Dev/LaptopKiller/bin/laptop_killer
+Restart=always
+RestartSec=300
+WorkingDirectory=/home/rheemtest/Dev/LaptopKiller/bin
+EnvironmentFile=/home/rheemtest/Dev/LaptopKiller/laptop_killer.env
+
+[Install]
+WantedBy=multi-user.target
+

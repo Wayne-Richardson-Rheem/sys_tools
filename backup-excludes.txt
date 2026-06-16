@@ -1,0 +1,104 @@
+# rsync exclude rules for /home/* (transfer root is /home/)
+# --------------------------------------------------------------------
+# NOTE: We are intentionally NOT excluding:
+#   ~/.config, ~/.local, ~/.gnupg
+
+###############################################################################
+# PER-USER CACHES, TEMP, AND REBUILDABLE DIRECTORIES
+###############################################################################
+
+# All users' caches
+/*/.cache/***
+
+# Python virtual environments
+/*/.venv/***
+/*/.virtualenv/***
+/*/.virtualenvs/***
+
+# VS Code Remote server (auto-recreated)
+/*/.vscode-server/***
+/*/.vscode-server-insiders/***
+
+# .NET SDK/runtime caches (auto-recreated)
+/*/.dotnet/***
+
+# Language/tooling caches (examples)
+/*/.npm/***
+/*/.yarn/***
+/*/.pnpm-store/***
+/*/.cache/pip/***
+/*/.cargo/registry/***
+/*/.rustup/toolchains/***
+/*/.m2/repository/***
+/*/.gradle/caches/***
+
+# Common trash locations
+/*/.local/share/Trash/***
+
+# Exclude Vim directory (you requested this)
+/*/.vim/***
+
+
+###############################################################################
+# USER LARGE FOLDERS (optional; uncomment to include in backup)
+###############################################################################
+/*/Downloads/***
+/*/Videos/***
+/*/Music/***
+/*/Pictures/***
+
+
+###############################################################################
+# PROJECT-LEVEL DEPENDENCIES AND BUILD DIRECTORIES
+###############################################################################
+
+# JavaScript/Node dependency trees
+/**/node_modules/***
+
+# Optional build/dependency dirs (uncomment if desired)
+/**/vendor/***        # PHP/Composer
+/**/target/***        # Maven/Gradle
+/**/dist/***          # Generic build outputs
+/**/.venv/***         # Per-project Python venvs
+
+
+###############################################################################
+# GENERIC BUILD ARTIFACTS (ADDED)
+###############################################################################
+
+# Common compiled objects
+**/*.o
+**/*.a
+**/*.so
+**/*.dll
+**/*.exe
+**/*.class
+**/*.pyc
+
+# C/C++ build folders
+/**/bin/***
+/**/obj/***
+/**/build/***
+/**/out/***
+/**/debug/***
+/**/release/***
+
+# CMake
+/**/CMakeFiles/***
+/**/CMakeCache.txt
+/**/cmake_install.cmake
+
+
+###############################################################################
+# LOG, TEMP, BACKUP FILES (ADDED)
+###############################################################################
+**/*.log
+**/*.tmp
+**/*.bak
+**/*~               # editor temp files
+
+###############################################################################
+# ENVIRONMENTAL / PASSWORD FILES
+###############################################################################
+/home/rheemtest/sys_tools/sys_vars.env
+

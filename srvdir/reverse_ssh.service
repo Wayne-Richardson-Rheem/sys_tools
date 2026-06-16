@@ -1,0 +1,18 @@
+[Unit]
+Description=Persistent Reverse SSH Tunnel to AWS via autossh
+After=ppp_sim7080.service
+Requires=ppp_sim7080.service
+BindsTo=ppp_sim7080.service
+
+[Service]
+Type=simple
+User=rheemtest
+Environment=HOME=/home/rheemtest
+WorkingDirectory=/home/rheemtest
+ExecStart=/usr/local/bin/start_reverse_ssh.sh
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+
