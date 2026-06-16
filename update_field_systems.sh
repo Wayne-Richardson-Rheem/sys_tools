@@ -38,10 +38,13 @@ GITHUB_API_BASE="https://api.github.com/repos"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com"
 DRY_RUN="${DRY_RUN:-0}"
 
+# Get script directory (handle piped execution where BASH_SOURCE is unset)
+set +u
 SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
 if [[ "$SCRIPT_DIR" == "$BASH_SOURCE[0]" ]] || [[ -z "$SCRIPT_DIR" ]]; then
     SCRIPT_DIR="$(pwd)"
 fi
+set -u
 TEMP_DIR="/tmp/update_field_$RANDOM"
 MOUNT_POINT=""
 
