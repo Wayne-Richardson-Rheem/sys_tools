@@ -38,7 +38,10 @@ GITHUB_API_BASE="https://api.github.com/repos"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com"
 DRY_RUN="${DRY_RUN:-0}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+if [[ "$SCRIPT_DIR" == "$BASH_SOURCE[0]" ]] || [[ -z "$SCRIPT_DIR" ]]; then
+    SCRIPT_DIR="$(pwd)"
+fi
 TEMP_DIR="/tmp/update_field_$RANDOM"
 MOUNT_POINT=""
 
@@ -111,9 +114,15 @@ else
     fatal "Invalid target: $TARGET (not a block device or directory)"
 fi
 
-# Verify /data structure
-[[ -d "$MOUNT_POINT/expander" ]] || fatal "$MOUNT_POINT/expander not found"
-[[ -d "$MOUNT_POINT/logfile_xfr" ]] || fatal "$MOUNT_POINT/logfile_xfr not found"
+# Verify /data structure (or create it)
+if [[ ! -d "$MOUNT_POINT/expander" ]]; then
+    log "Creating $MOUNT_POINT/expander directory structure..."
+    sudo mkdir -p "$MOUNT_POINT/expander/runtime/bin" "$MOUNT_POINT/expander/logs"
+fi
+if [[ ! -d "$MOUNT_POINT/logfile_xfr" ]]; then
+    log "Creating $MOUNT_POINT/logfile_xfr directory structure..."
+    sudo mkdir -p "$MOUNT_POINT/logfile_xfr/runtime/bin" "$MOUNT_POINT/logfile_xfr/logs"
+fi
 pass "Verified /data structure at $MOUNT_POINT"
 
 # Helper functions from harden_pi.sh
@@ -252,7 +261,10 @@ fetch_runtime_from_repo_files "$LOGFILE_XFR_GH_REPO" "$LOGFILE_XFR_RELEASE_TAG" 
 stage_runtime_payload "$TEMP_DIR/logfile_xfr" "$MOUNT_POINT/logfile_xfr"
 
 if [[ "$DRY_RUN" != "1" ]]; then
-    sudo chown -R $(id -u):$(id -g) "$MOUNT_POINT/logfile_xfr" 2>/dev/null || true
+    # Change ownership to pi user if it exists, otherwise leave as is
+    if id pi >/dev/null 2>&1; then
+        sudo chown -R pi:pi "$MOUNT_POINT/logfile_xfr" 2>/dev/null || true
+    fi
     chmod 755 "$MOUNT_POINT/logfile_xfr/runtime" "$MOUNT_POINT/logfile_xfr/runtime/bin" 2>/dev/null || true
 fi
 
@@ -263,7 +275,10 @@ fetch_runtime_from_repo_files "$EXPANDER_GH_REPO" "$EXPANDER_RELEASE_TAG" "expan
 stage_runtime_payload "$TEMP_DIR/expander" "$MOUNT_POINT/expander"
 
 if [[ "$DRY_RUN" != "1" ]]; then
-    sudo chown -R $(id -u):$(id -g) "$MOUNT_POINT/expander" 2>/dev/null || true
+    # Change ownership to pi user if it exists, otherwise leave as is
+    if id pi >/dev/null 2>&1; then
+        sudo chown -R pi:pi "$MOUNT_POINT/expander" 2>/dev/null || true
+    fi
     chmod 755 "$MOUNT_POINT/expander/runtime" "$MOUNT_POINT/expander/runtime/bin" 2>/dev/null || true
 fi
 
