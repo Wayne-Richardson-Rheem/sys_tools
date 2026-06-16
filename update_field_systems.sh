@@ -172,7 +172,9 @@ verify_runtime_checksum() {
             file=$2
             sub(/^\*+/, "", file)
             n=split(file, p, "/")
-            if (p[n] == rb) {
+            filename=p[n]
+            # Match if exact name or starts with basename (handles versioned names like "logfile_xfr-0.1.0")
+            if (filename == rb || (length(filename) > length(rb) && substr(filename, 1, length(rb)+1) == rb "-")) {
                 $2=rb
             }
             print
