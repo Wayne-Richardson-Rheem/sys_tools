@@ -128,10 +128,17 @@ fi
 # Verify /data structure (or create it)
 if [[ ! -d "$MOUNT_POINT/expander" ]]; then
     log "Creating $MOUNT_POINT/expander directory structure..."
-    sudo mkdir -p "$MOUNT_POINT/expander/runtime/bin" "$MOUNT_POINT/expander/logs"
 fi
 if [[ ! -d "$MOUNT_POINT/logfile_xfr" ]]; then
     log "Creating $MOUNT_POINT/logfile_xfr directory structure..."
+fi
+
+# Always ensure required subdirectories exist (handles partially initialized systems).
+if [[ "$DRY_RUN" == "1" ]]; then
+    log "[DRY_RUN] Would ensure $MOUNT_POINT/expander/runtime/bin and $MOUNT_POINT/expander/logs"
+    log "[DRY_RUN] Would ensure $MOUNT_POINT/logfile_xfr/runtime/bin and $MOUNT_POINT/logfile_xfr/logs"
+else
+    sudo mkdir -p "$MOUNT_POINT/expander/runtime/bin" "$MOUNT_POINT/expander/logs"
     sudo mkdir -p "$MOUNT_POINT/logfile_xfr/runtime/bin" "$MOUNT_POINT/logfile_xfr/logs"
 fi
 pass "Verified /data structure at $MOUNT_POINT"
