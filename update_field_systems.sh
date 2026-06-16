@@ -224,45 +224,62 @@ fetch_runtime_from_repo_files() {
     local tag="$2"
     local app_name="$3"
     local temp_stage="$4"
-    local version
-    
-    # Get version from latest.txt
-    log "Fetching version for $app_name from $repo..."
-    version=$(github_raw_get "$GITHUB_RAW_BASE/$repo/main/latest.txt" | tr -d ' \n')
-    
+    local version owner repo_name api_url
+
+    # Split repo into owner/name
+    owner="${repo%%/*}"
+    repo_name="${repo##*/}"
+
+    # Get latest release tag from GitHub Releases API
+    log "Fetching latest release for $app_name from $repo..."
+    api_url="https://api.github.com/repos/$repo/releases/latest"
+    version=$(curl -sSf "$api_url" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+
     if [[ -z "$version" ]]; then
-        fatal "Failed to fetch version from $repo"
+        fatal "Failed to fetch latest release version from $repo"
     fi
-    
+
     log "Latest version: $version"
-    
-    # Download from releases/vX.Y.Z/
-    local release_url="$GITHUB_RAW_BASE/$repo/main/releases/v$version/${app_name}-${version}"
-    local checksum_url="$GITHUB_RAW_BASE/$repo/main/releases/v$version/${app_name}-${version}.sha256"
-    
+
+    # Download assets from GitHub Release
+    local assets_json
+    assets_json=$(curl -sSf "https://api.github.com/repos/$repo/releases/latest" | \
+        python3 -c "import sys,json; [print(a['browser_download_url']) for a in json.load(sys.stdin)['assets']]")
+
+    local release_url checksum_url
+    release_url=$(echo "$assets_json" | grep -E "/${app_name}-${version}$" | head -1)
+    checksum_url=$(echo "$assets_json" | grep -E "/${app_name}-${version}\.sha256$" | head -1)
+
+    if [[ -z "$release_url" ]]; then
+        fatal "Could not find release asset for ${app_name}-${version} in $repo"
+    fi
+    if [[ -z "$checksum_url" ]]; then
+        fatal "Could not find checksum asset for ${app_name}-${version}.sha256 in $repo"
+    fi
+
     log "Downloading $app_name checksum..."
-    if ! github_raw_get "$checksum_url" > "$temp_stage/${app_name}.sha256"; then
+    if ! curl -sSfL "$checksum_url" > "$temp_stage/${app_name}.sha256"; then
         fatal "Failed to download checksum from $repo"
     fi
-    
+
     if [[ ! -s "$temp_stage/${app_name}.sha256" ]]; then
         fatal "Checksum file is empty: $checksum_url"
     fi
-    
+
     log "Downloading $app_name runtime..."
-    if ! github_raw_get "$release_url" > "$temp_stage/$app_name"; then
+    if ! curl -sSfL "$release_url" > "$temp_stage/$app_name"; then
         fatal "Failed to download $app_name from $repo"
     fi
-    
+
     if [[ ! -s "$temp_stage/$app_name" ]]; then
         fatal "Downloaded binary is empty: $release_url"
     fi
-    
+
     # Verify checksum
     cd "$temp_stage"
     verify_runtime_checksum "${app_name}.sha256" "$app_name"
     cd - >/dev/null
-    
+
     pass "Downloaded and verified $app_name version $version"
 }
 
