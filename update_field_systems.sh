@@ -341,16 +341,19 @@ install_logfile_xfr_ota() {
     local dest_dir="$1"
     local ota_dir="$dest_dir/runtime/ota"
     local key_dir="$ota_dir/keys"
-    local ota_script="$dest_dir/runtime/bin/ota.sh"
+    local tools_dir="$dest_dir/tools"
+    local ota_script="$tools_dir/ota.sh"
+    local mirror_script="$tools_dir/mirror_release.sh"
     local key_file="$key_dir/logfile_xfr_ota_pubkey.asc"
     local local_pubkey="$SCRIPT_DIR/logfile_xfr_ota_pubkey.asc"
 
     if [[ "$DRY_RUN" == "1" ]]; then
         log "[DRY_RUN] Would ensure OTA directories: $ota_dir and $key_dir"
         log "[DRY_RUN] Would install OTA updater script at $ota_script"
+        log "[DRY_RUN] Would install mirror_release.sh at $mirror_script"
     else
-        sudo mkdir -p "$ota_dir" "$key_dir" "$dest_dir/runtime/bin"
-        cat > "$TEMP_DIR/ota.sh" <<'EOF'
+        sudo mkdir -p "$ota_dir" "$key_dir" "$tools_dir"
+        cat > "$TEMP_DIR/logfile_xfr_ota.sh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
@@ -381,6 +384,12 @@ echo "[OTA] Latest available version: $LATEST_VERSION"
 if [[ "$LATEST_VERSION" == "$CURRENT_VERSION" ]]; then
   echo "[OTA] Already up to date ($CURRENT_VERSION)"
   exit 0
+fi
+
+# Do not downgrade if release metadata is stale.
+if [[ "$(printf '%s\n%s\n' "$LATEST_VERSION" "$CURRENT_VERSION" | sort -V | tail -n1)" != "$LATEST_VERSION" ]]; then
+    echo "[OTA] Repository version ($LATEST_VERSION) is older than current ($CURRENT_VERSION); skipping downgrade"
+    exit 0
 fi
 
 VERSION="$LATEST_VERSION"
@@ -425,7 +434,14 @@ fi
 
 echo "[OTA] Update successful ($VERSION)"
 EOF
-        sudo install -m 755 "$TEMP_DIR/ota.sh" "$ota_script"
+        sudo install -m 755 "$TEMP_DIR/logfile_xfr_ota.sh" "$ota_script"
+
+        # Download mirror_release.sh from source repo
+        if ! curl -fsSL https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr/main/tools/mirror_release.sh -o "$TEMP_DIR/logfile_xfr_mirror_release.sh"; then
+            warn "Could not download mirror_release.sh for logfile_xfr"
+        else
+            sudo install -m 755 "$TEMP_DIR/logfile_xfr_mirror_release.sh" "$mirror_script"
+        fi
     fi
 
     if [[ -f "$local_pubkey" ]]; then
@@ -479,7 +495,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=RUNTIME=/opt/logfile_xfr/runtime
-ExecStart=/opt/logfile_xfr/runtime/bin/ota.sh
+ExecStart=/opt/logfile_xfr/tools/ota.sh
 User=root
 Group=root
 EOF
@@ -509,15 +525,18 @@ install_expander_ota() {
     local dest_dir="$1"
     local ota_dir="$dest_dir/runtime/ota"
     local key_dir="$ota_dir/keys"
-    local ota_script="$dest_dir/runtime/bin/ota.sh"
+    local tools_dir="$dest_dir/tools"
+    local ota_script="$tools_dir/ota.sh"
+    local mirror_script="$tools_dir/mirror_release.sh"
     local key_file="$key_dir/expander_ota_pubkey.asc"
     local local_pubkey="$SCRIPT_DIR/expander_ota_pubkey.asc"
 
     if [[ "$DRY_RUN" == "1" ]]; then
         log "[DRY_RUN] Would ensure OTA directories: $ota_dir and $key_dir"
         log "[DRY_RUN] Would install OTA updater script at $ota_script"
+        log "[DRY_RUN] Would install mirror_release.sh at $mirror_script"
     else
-        sudo mkdir -p "$ota_dir" "$key_dir" "$dest_dir/runtime/bin"
+        sudo mkdir -p "$ota_dir" "$key_dir" "$tools_dir"
         cat > "$TEMP_DIR/expander_ota.sh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -549,6 +568,12 @@ echo "[OTA] Latest available version: $LATEST_VERSION"
 if [[ "$LATEST_VERSION" == "$CURRENT_VERSION" ]]; then
   echo "[OTA] Already up to date ($CURRENT_VERSION)"
   exit 0
+fi
+
+# Do not downgrade if release metadata is stale.
+if [[ "$(printf '%s\n%s\n' "$LATEST_VERSION" "$CURRENT_VERSION" | sort -V | tail -n1)" != "$LATEST_VERSION" ]]; then
+    echo "[OTA] Repository version ($LATEST_VERSION) is older than current ($CURRENT_VERSION); skipping downgrade"
+    exit 0
 fi
 
 VERSION="$LATEST_VERSION"
@@ -594,6 +619,13 @@ fi
 echo "[OTA] Update successful ($VERSION)"
 EOF
         sudo install -m 755 "$TEMP_DIR/expander_ota.sh" "$ota_script"
+
+        # Download mirror_release.sh from source repo
+        if ! curl -fsSL https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander/main/tools/mirror_release.sh -o "$TEMP_DIR/expander_mirror_release.sh"; then
+            warn "Could not download mirror_release.sh for expander"
+        else
+            sudo install -m 755 "$TEMP_DIR/expander_mirror_release.sh" "$mirror_script"
+        fi
     fi
 
     if [[ -f "$local_pubkey" ]]; then
@@ -647,7 +679,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=RUNTIME=/opt/expander/runtime
-ExecStart=/opt/expander/runtime/bin/ota.sh
+ExecStart=/opt/expander/tools/ota.sh
 User=root
 Group=root
 EOF
