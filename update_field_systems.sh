@@ -497,17 +497,19 @@ fetch_runtime_from_repo_files() {
         api_url="https://api.github.com/repos/$repo/releases/tags/$tag"
     fi
 
-    if ! release_json=$(curl -sSf "$api_url"); then
-        if [[ "$allow_missing_release" == "1" ]]; then
+    if [[ "$allow_missing_release" == "1" ]]; then
+        # Optional app update path: keep output clean if release endpoint is unavailable.
+        if ! release_json=$(curl -sSf "$api_url" 2>/dev/null); then
             warn "Could not fetch release metadata for $app_name from $repo ($api_url); skipping runtime fetch"
             return 1
         fi
+    elif ! release_json=$(curl -sSf "$api_url"); then
         fatal "Failed to fetch release metadata for $app_name from $repo"
     fi
 
-    if ! version=$(printf '%s' "$release_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))" 2>/dev/null); then
+    if ! version=$(printf '%s' "$release_json" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('tag_name') or '').lstrip('v'))" 2>/dev/null); then
         if [[ "$allow_missing_release" == "1" ]]; then
-            warn "Release metadata for $app_name in $repo did not contain a usable tag_name; skipping runtime fetch"
+            warn "Release metadata for $app_name in $repo was not valid JSON; skipping runtime fetch"
             return 1
         fi
         fatal "Failed to parse release version from $repo"
