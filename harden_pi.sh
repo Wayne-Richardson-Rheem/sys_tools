@@ -345,6 +345,37 @@ done
 info "[PREFLIGHT] Required tools OK"
 
 ###############################################################################
+# 1b. App runtime payload validation
+###############################################################################
+if [[ "$STUB_MODE" != "1" ]]; then
+  [[ -f "$EXPANDER_SRC/runtime/bin/expander" ]] \
+    || fatal "Missing Expander runtime binary: $EXPANDER_SRC/runtime/bin/expander"
+
+  [[ -f "$LOGFILE_XFR_SRC/runtime/bin/logfile_xfr" ]] \
+    || fatal "Missing LogFileXfr runtime binary: $LOGFILE_XFR_SRC/runtime/bin/logfile_xfr"
+
+  [[ -f "$LAPTOPKILLER_SRC/runtime/bin/laptop_killer" ]] \
+    || fatal "Missing LaptopKiller runtime binary: $LAPTOPKILLER_SRC/runtime/bin/laptop_killer"
+
+  [[ -f "$LAPTOPKILLER_SRC/laptop_killer.env" ]] \
+    || fatal "Missing LaptopKiller env file: $LAPTOPKILLER_SRC/laptop_killer.env"
+
+  [[ -d "$LAPTOPKILLER_SRC/runtime/configs" ]] \
+    || fatal "Missing LaptopKiller configs directory: $LAPTOPKILLER_SRC/runtime/configs"
+
+  [[ -f "$LAPTOPKILLER_SRC/runtime/configs/sys_config.txt" ]] \
+    || fatal "Missing LaptopKiller sys_config.txt: $LAPTOPKILLER_SRC/runtime/configs/sys_config.txt"
+
+  [[ -d "$EXPANDER_SRC/tools" ]] \
+    || fatal "Missing Expander tools directory: $EXPANDER_SRC/tools"
+
+  [[ -d "$LOGFILE_XFR_SRC/tools" ]] \
+    || fatal "Missing LogFileXfr tools directory: $LOGFILE_XFR_SRC/tools"
+fi
+
+info "[PREFLIGHT] App runtime payloads OK"
+
+###############################################################################
 # 2. Kernel artifacts validation
 ###############################################################################
 LATEST_KERNEL=$(ls -t "$HOME/kernel_artifacts/kernel7.img-"* 2>/dev/null | grep -v '\.sha256$' | head -n1 || true)
@@ -1553,25 +1584,36 @@ info "Runtime home mountpoint permissions in BUILD_ROOT:"
 sudo stat -c '%A %u:%g %n' "$BUILD_ROOT/home" "$BUILD_ROOT/home/$REALUSER"
 
 ###############################################################################
-# Seed Laptop Killer app into /data (single writable app location)
+# Seed Laptop Killer app runtime into /data
 ###############################################################################
 info "Seeding Laptop Killer app into /data/laptopkiller..."
-sudo mkdir -p "$DATA_MNT/laptopkiller"
+sudo mkdir -p "$DATA_MNT/laptopkiller/runtime/bin" "$DATA_MNT/laptopkiller/runtime/logs/Archive" "$DATA_MNT/laptopkiller/runtime/logs/xfer"
 
 if [[ "$STUB_MODE" == "1" ]]; then
   warn "WSL stub mode: creating minimal /data/laptopkiller placeholder"
   echo "stub-laptopkiller" | sudo tee "$DATA_MNT/laptopkiller/README.txt" >/dev/null
 else
-  if [[ -d "$LAPTOPKILLER_SRC" ]]; then
-    sudo rsync -aHx --numeric-ids --delete \
-      --exclude="runtime/logs/*" \
-      "$LAPTOPKILLER_SRC/" "$DATA_MNT/laptopkiller/"
+  if [[ -f "$LAPTOPKILLER_SRC/runtime/bin/laptop_killer" ]]; then
+    sudo cp -f "$LAPTOPKILLER_SRC/runtime/bin/laptop_killer" "$DATA_MNT/laptopkiller/runtime/bin/laptop_killer"
+    sudo chmod 755 "$DATA_MNT/laptopkiller/runtime/bin/laptop_killer"
   else
-    warn "Laptop Killer source not found, skipping app seed: $LAPTOPKILLER_SRC"
+    warn "Laptop Killer runtime binary not found at $LAPTOPKILLER_SRC/runtime/bin/laptop_killer"
+  fi
+
+  if [[ -f "$LAPTOPKILLER_SRC/laptop_killer.env" ]]; then
+    sudo cp -f "$LAPTOPKILLER_SRC/laptop_killer.env" "$DATA_MNT/laptopkiller/laptop_killer.env"
+    sudo chmod 644 "$DATA_MNT/laptopkiller/laptop_killer.env"
+  else
+    warn "Laptop Killer env file not found at $LAPTOPKILLER_SRC/laptop_killer.env"
+  fi
+
+  if [[ -d "$LAPTOPKILLER_SRC/runtime/configs" ]]; then
+    sudo mkdir -p "$DATA_MNT/laptopkiller/runtime/configs"
+    sudo cp -a "$LAPTOPKILLER_SRC/runtime/configs/." "$DATA_MNT/laptopkiller/runtime/configs/"
+  else
+    warn "Laptop Killer config directory not found at $LAPTOPKILLER_SRC/runtime/configs"
   fi
 fi
-
-sudo mkdir -p "$DATA_MNT/laptopkiller/runtime/logs/Archive" "$DATA_MNT/laptopkiller/runtime/logs/xfer"
 
 info "Cleaning Laptop Killer runtime logs (preserve Archive/ and xfer/ directories)..."
 # Remove everything directly under runtime/logs except Archive and xfer directories.
@@ -1583,11 +1625,12 @@ sudo find "$DATA_MNT/laptopkiller/runtime/logs/xfer" -mindepth 1 -exec rm -rf {}
 
 sudo chown -R "$TARGET_UID:$TARGET_GID" "$DATA_MNT/laptopkiller"
 sudo find "$DATA_MNT/laptopkiller" -type d -exec chmod 755 {} +
-sudo chmod 755 "$DATA_MNT/laptopkiller/runtime" "$DATA_MNT/laptopkiller/runtime/logs" \
+sudo chmod 755 "$DATA_MNT/laptopkiller/runtime" "$DATA_MNT/laptopkiller/runtime/bin" "$DATA_MNT/laptopkiller/runtime/logs" \
   "$DATA_MNT/laptopkiller/runtime/logs/Archive" "$DATA_MNT/laptopkiller/runtime/logs/xfer" 2>/dev/null || true
+sudo chmod 644 "$DATA_MNT/laptopkiller/laptop_killer.env" 2>/dev/null || true
 
 info "Laptop Killer app path permissions on data partition:"
-sudo stat -c '%A %u:%g %n' "$DATA_MNT/laptopkiller" "$DATA_MNT/laptopkiller/runtime" "$DATA_MNT/laptopkiller/runtime/logs" 2>/dev/null || true
+sudo stat -c '%A %u:%g %n' "$DATA_MNT/laptopkiller" "$DATA_MNT/laptopkiller/runtime" "$DATA_MNT/laptopkiller/runtime/bin" "$DATA_MNT/laptopkiller/runtime/logs" 2>/dev/null || true
 
 ###############################################################################
 # Seed Expander app runtime into /data
@@ -1600,6 +1643,15 @@ if [[ -f "$EXPANDER_SRC/runtime/bin/expander" ]]; then
   sudo chmod 755 "$DATA_MNT/expander/runtime/bin/expander"
 else
   warn "Expander runtime binary not found at $EXPANDER_SRC/runtime/bin/expander"
+fi
+
+if [[ -d "$EXPANDER_SRC/tools" ]]; then
+  sudo mkdir -p "$DATA_MNT/expander/tools"
+  sudo cp -a "$EXPANDER_SRC/tools/""." "$DATA_MNT/expander/tools/"
+  sudo chmod 755 "$DATA_MNT/expander/tools"
+  sudo find "$DATA_MNT/expander/tools" -type f -exec chmod 755 {} +
+else
+  warn "Expander tools directory not found at $EXPANDER_SRC/tools"
 fi
 
 sudo chown -R "$TARGET_UID:$TARGET_GID" "$DATA_MNT/expander"
@@ -1617,6 +1669,15 @@ if [[ -f "$LOGFILE_XFR_SRC/runtime/bin/logfile_xfr" ]]; then
   sudo chmod 755 "$DATA_MNT/logfile_xfr/runtime/bin/logfile_xfr"
 else
   warn "LogFileXfr runtime binary not found at $LOGFILE_XFR_SRC/runtime/bin/logfile_xfr"
+fi
+
+if [[ -d "$LOGFILE_XFR_SRC/tools" ]]; then
+  sudo mkdir -p "$DATA_MNT/logfile_xfr/tools"
+  sudo cp -a "$LOGFILE_XFR_SRC/tools/""." "$DATA_MNT/logfile_xfr/tools/"
+  sudo chmod 755 "$DATA_MNT/logfile_xfr/tools"
+  sudo find "$DATA_MNT/logfile_xfr/tools" -type f -exec chmod 755 {} +
+else
+  warn "LogFileXfr tools directory not found at $LOGFILE_XFR_SRC/tools"
 fi
 
 sudo chown -R "$TARGET_UID:$TARGET_GID" "$DATA_MNT/logfile_xfr"
