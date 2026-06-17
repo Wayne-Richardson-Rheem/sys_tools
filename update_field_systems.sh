@@ -17,8 +17,8 @@
 #   EXPANDER_RELEASE_TAG       Version tag (default: latest)
 #   LOGFILE_XFR_OTA_PUBKEY_URL OTA public key URL (optional)
 #   EXPANDER_OTA_PUBKEY_URL    OTA public key URL (optional)
-#   LOGFILE_XFR_MIRROR_SCRIPT_URL URL for logfile_xfr mirror_release.sh (optional)
-#   EXPANDER_MIRROR_SCRIPT_URL URL for expander mirror_release.sh (optional)
+#   LOGFILE_XFR_MIRROR_SCRIPT_URL URL for logfile_xfr mirror_release.sh override (optional)
+#   EXPANDER_MIRROR_SCRIPT_URL URL for expander mirror_release.sh override (optional)
 #   LOGFILE_XFR_OTA_ENABLE_TIMER Enable LogFileXfr OTA timer (1/0)
 #   EXPANDER_OTA_ENABLE_TIMER  Enable Expander OTA timer (1/0)
 #   GITHUB_TOKEN               GitHub PAT for private repos (optional)
@@ -42,8 +42,8 @@ LOGFILE_XFR_RELEASE_TAG="${LOGFILE_XFR_RELEASE_TAG:-latest}"
 EXPANDER_RELEASE_TAG="${EXPANDER_RELEASE_TAG:-latest}"
 LOGFILE_XFR_OTA_PUBKEY_URL="${LOGFILE_XFR_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr-Releases/main/logfile_xfr_ota_pubkey.asc}"
 EXPANDER_OTA_PUBKEY_URL="${EXPANDER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander-Releases/main/expander_ota_pubkey.asc}"
-LOGFILE_XFR_MIRROR_SCRIPT_URL="${LOGFILE_XFR_MIRROR_SCRIPT_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr/main/tools/mirror_release.sh}"
-EXPANDER_MIRROR_SCRIPT_URL="${EXPANDER_MIRROR_SCRIPT_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander/main/tools/mirror_release.sh}"
+LOGFILE_XFR_MIRROR_SCRIPT_URL="${LOGFILE_XFR_MIRROR_SCRIPT_URL:-}"
+EXPANDER_MIRROR_SCRIPT_URL="${EXPANDER_MIRROR_SCRIPT_URL:-}"
 LOGFILE_XFR_OTA_ENABLE_TIMER="${LOGFILE_XFR_OTA_ENABLE_TIMER:-1}"
 EXPANDER_OTA_ENABLE_TIMER="${EXPANDER_OTA_ENABLE_TIMER:-1}"
 GITHUB_API_BASE="https://api.github.com/repos"
@@ -223,29 +223,97 @@ install_mirror_script() {
     local script_url="$2"
     local mirror_script="$3"
     local tmp_script="$4"
+    local target
+    local mirror_repo_url
+    local mirror_repo_dir
+
+    if [[ "$app_name" == "logfile_xfr" ]]; then
+        target="logfile_xfr"
+        mirror_repo_url="https://github.com/Wayne-Richardson-Rheem/LogFileXfr-Releases.git"
+        mirror_repo_dir='$HOME/Dev/LogFileXfr-Releases'
+    else
+        target="expander"
+        mirror_repo_url="https://github.com/Wayne-Richardson-Rheem/Expander-Releases.git"
+        mirror_repo_dir='$HOME/Dev/Expander-Releases'
+    fi
 
     if [[ "$DRY_RUN" == "1" ]]; then
         if [[ -n "$script_url" ]]; then
             log "[DRY_RUN] Would download $app_name mirror_release.sh from $script_url"
         else
-            warn "[DRY_RUN] No mirror script URL configured for $app_name; would install fallback helper"
+            log "[DRY_RUN] No mirror URL provided for $app_name; would install embedded mirror_release.sh"
         fi
         log "[DRY_RUN] Would install mirror_release.sh at $mirror_script"
         return 0
     fi
 
-    if [[ -n "$script_url" ]] && curl -fsSL "$script_url" -o "$tmp_script" && [[ -s "$tmp_script" ]]; then
+    if [[ -n "$script_url" ]] && curl -fsSL "$script_url" -o "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
         sudo install -m 755 "$tmp_script" "$mirror_script"
         return 0
     fi
 
-    warn "Could not download mirror_release.sh for $app_name; installing local fallback helper"
+    if [[ -n "$script_url" ]]; then
+        warn "Could not download mirror_release.sh for $app_name from override URL; installing embedded script"
+    else
+        log "Installing embedded mirror_release.sh for $app_name"
+    fi
+
     cat > "$tmp_script" <<EOF
 #!/bin/bash
 set -euo pipefail
-echo "[$app_name] mirror_release.sh source was unavailable during field update."
-echo "[$app_name] Set ${app_name^^}_MIRROR_SCRIPT_URL and rerun update_field_systems.sh to replace this helper."
-exit 1
+
+ROOT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET="$target"
+VERSION="\$(tr -d '\\n\\r' < "\$ROOT_DIR/VERSION")"
+DIST_DIR="\$ROOT_DIR/dist"
+
+MIRROR_DIR="\${MIRROR_DIR:-$mirror_repo_dir}"
+MIRROR_REPO_URL="\${MIRROR_REPO_URL:-$mirror_repo_url}"
+
+BIN_FILE="\$TARGET-\$VERSION"
+VERSION_DIR="\$MIRROR_DIR/releases/v\$VERSION"
+
+for artifact in \
+    "\$DIST_DIR/\$BIN_FILE" \
+    "\$DIST_DIR/\$BIN_FILE.sha256" \
+    "\$DIST_DIR/\$BIN_FILE.sha256.asc"
+do
+    if [[ ! -f "\$artifact" ]]; then
+        echo "ERROR: missing release artifact: \$artifact"
+        exit 1
+    fi
+done
+
+if [[ ! -d "\$MIRROR_DIR/.git" ]]; then
+    git clone "\$MIRROR_REPO_URL" "\$MIRROR_DIR"
+fi
+
+cd "\$MIRROR_DIR"
+git pull --ff-only origin main
+
+mkdir -p "\$VERSION_DIR"
+
+cp "\$DIST_DIR/\$BIN_FILE" "\$VERSION_DIR/"
+cp "\$DIST_DIR/\$BIN_FILE.sha256" "\$VERSION_DIR/"
+cp "\$DIST_DIR/\$BIN_FILE.sha256.asc" "\$VERSION_DIR/"
+
+printf '%s\\n' "\$VERSION" > "\$MIRROR_DIR/latest.txt"
+
+git add \
+    "\$MIRROR_DIR/latest.txt" \
+    "\$VERSION_DIR/\$BIN_FILE" \
+    "\$VERSION_DIR/\$BIN_FILE.sha256" \
+    "\$VERSION_DIR/\$BIN_FILE.sha256.asc"
+
+if git diff --cached --quiet; then
+    echo "Mirror already up to date for v\$VERSION"
+    exit 0
+fi
+
+git commit -m "Publish \$TARGET \$VERSION"
+git push origin main
+
+echo "Mirrored \$TARGET v\$VERSION to \$MIRROR_DIR"
 EOF
     sudo install -m 755 "$tmp_script" "$mirror_script"
 }
@@ -269,7 +337,7 @@ install_ota_pubkey() {
     if [[ -n "$local_pubkey" ]]; then
         warn "Local OTA pubkey not found at $local_pubkey; trying URL"
     else
-        warn "No local OTA pubkey path (script executed via pipe); trying URL"
+        log "No local OTA pubkey path (script executed via pipe); trying URL"
     fi
 
     if [[ "$DRY_RUN" == "1" ]]; then
@@ -277,7 +345,7 @@ install_ota_pubkey() {
         return 0
     fi
 
-    if curl -fsSL "$pubkey_url" -o "$tmp_pubkey" && [[ -s "$tmp_pubkey" ]]; then
+    if curl -fsSL "$pubkey_url" -o "$tmp_pubkey" 2>/dev/null && [[ -s "$tmp_pubkey" ]]; then
         sudo install -m 644 "$tmp_pubkey" "$key_file"
     else
         warn "Could not download OTA pubkey for $app_name; OTA signature verification will fail until key is installed"
