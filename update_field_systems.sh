@@ -2,8 +2,8 @@
 ###############################################################################
 # update_field_systems.sh
 #
-# Purpose: Update LogFileXfr and Expander apps on immutable Raspberry Pi
-#          field systems with A/B SquashFS + /data partition layout.
+# Purpose: Update LogFileXfr, Expander, and LaptopKiller apps on immutable
+#          Raspberry Pi field systems with A/B SquashFS + /data partition layout.
 #
 # Usage:
 #   ./update_field_systems.sh /dev/sdb
@@ -13,16 +13,22 @@
 # Environment Variables (optional):
 #   LOGFILE_XFR_GH_REPO        GitHub repo (default: Wayne-Richardson-Rheem/LogFileXfr-Releases)
 #   EXPANDER_GH_REPO           GitHub repo (default: Wayne-Richardson-Rheem/Expander-Releases)
+#   LAPTOP_KILLER_GH_REPO      GitHub repo (default: Wayne-Richardson-Rheem/LaptopKiller-Releases)
 #   LOGFILE_XFR_RELEASE_TAG    Version tag (default: latest)
 #   EXPANDER_RELEASE_TAG       Version tag (default: latest)
+#   LAPTOP_KILLER_RELEASE_TAG  Version tag (default: latest)
 #   LOGFILE_XFR_OTA_PUBKEY_URL OTA public key URL (optional)
 #   EXPANDER_OTA_PUBKEY_URL    OTA public key URL (optional)
+#   LAPTOP_KILLER_OTA_PUBKEY_URL OTA public key URL (optional)
 #   LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK Additional logfile_xfr pubkey URL (optional)
 #   EXPANDER_OTA_PUBKEY_URL_FALLBACK Additional expander pubkey URL (optional)
+#   LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK Additional laptop_killer pubkey URL (optional)
 #   LOGFILE_XFR_MIRROR_SCRIPT_URL URL for logfile_xfr mirror_release.sh override (optional)
 #   EXPANDER_MIRROR_SCRIPT_URL URL for expander mirror_release.sh override (optional)
+#   LAPTOP_KILLER_MIRROR_SCRIPT_URL URL for laptop_killer mirror_release.sh override (optional)
 #   LOGFILE_XFR_OTA_ENABLE_TIMER Enable LogFileXfr OTA timer (1/0)
 #   EXPANDER_OTA_ENABLE_TIMER  Enable Expander OTA timer (1/0)
+#   LAPTOP_KILLER_OTA_ENABLE_TIMER Enable LaptopKiller OTA timer (1/0)
 #   GITHUB_TOKEN               GitHub PAT for private repos (optional)
 #   DRY_RUN                    Set to 1 to show what would happen without making changes
 #
@@ -40,22 +46,29 @@ NC='\033[0m' # No Color
 # Defaults
 LOGFILE_XFR_GH_REPO="${LOGFILE_XFR_GH_REPO:-Wayne-Richardson-Rheem/LogFileXfr-Releases}"
 EXPANDER_GH_REPO="${EXPANDER_GH_REPO:-Wayne-Richardson-Rheem/Expander-Releases}"
+LAPTOP_KILLER_GH_REPO="${LAPTOP_KILLER_GH_REPO:-Wayne-Richardson-Rheem/LaptopKiller-Releases}"
 LOGFILE_XFR_RELEASE_TAG="${LOGFILE_XFR_RELEASE_TAG:-latest}"
 EXPANDER_RELEASE_TAG="${EXPANDER_RELEASE_TAG:-latest}"
+LAPTOP_KILLER_RELEASE_TAG="${LAPTOP_KILLER_RELEASE_TAG:-latest}"
 LOGFILE_XFR_OTA_PUBKEY_URL="${LOGFILE_XFR_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr-Releases/main/logfile_xfr_ota_pubkey.asc}"
 EXPANDER_OTA_PUBKEY_URL="${EXPANDER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander-Releases/main/expander_ota_pubkey.asc}"
+LAPTOP_KILLER_OTA_PUBKEY_URL="${LAPTOP_KILLER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LaptopKiller-Releases/main/laptop_killer_ota_pubkey.asc}"
 LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK="${LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr/main/logfile_xfr_ota_pubkey.asc}"
 EXPANDER_OTA_PUBKEY_URL_FALLBACK="${EXPANDER_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander/main/expander_ota_pubkey.asc}"
+LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK="${LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LaptopKiller/main/laptop_killer_ota_pubkey.asc}"
 LOGFILE_XFR_MIRROR_SCRIPT_URL="${LOGFILE_XFR_MIRROR_SCRIPT_URL:-}"
 EXPANDER_MIRROR_SCRIPT_URL="${EXPANDER_MIRROR_SCRIPT_URL:-}"
+LAPTOP_KILLER_MIRROR_SCRIPT_URL="${LAPTOP_KILLER_MIRROR_SCRIPT_URL:-}"
 LOGFILE_XFR_OTA_ENABLE_TIMER="${LOGFILE_XFR_OTA_ENABLE_TIMER:-1}"
 EXPANDER_OTA_ENABLE_TIMER="${EXPANDER_OTA_ENABLE_TIMER:-1}"
+LAPTOP_KILLER_OTA_ENABLE_TIMER="${LAPTOP_KILLER_OTA_ENABLE_TIMER:-1}"
 GITHUB_API_BASE="https://api.github.com/repos"
 GITHUB_RAW_BASE="https://raw.githubusercontent.com"
 DRY_RUN="${DRY_RUN:-0}"
 
 LOGFILE_XFR_VERSION=""
 EXPANDER_VERSION=""
+LAPTOP_KILLER_VERSION=""
 
 # Get script directory (safely handle piped execution where BASH_SOURCE is unset)
 SCRIPT_DIR=""
@@ -148,14 +161,19 @@ fi
 if [[ ! -d "$MOUNT_POINT/logfile_xfr" ]]; then
     log "Creating $MOUNT_POINT/logfile_xfr directory structure..."
 fi
+if [[ ! -d "$MOUNT_POINT/laptopkiller" ]]; then
+    log "Creating $MOUNT_POINT/laptopkiller directory structure..."
+fi
 
 # Always ensure required subdirectories exist (handles partially initialized systems).
 if [[ "$DRY_RUN" == "1" ]]; then
     log "[DRY_RUN] Would ensure $MOUNT_POINT/expander/runtime/bin and $MOUNT_POINT/expander/runtime/logs"
     log "[DRY_RUN] Would ensure $MOUNT_POINT/logfile_xfr/runtime/bin and $MOUNT_POINT/logfile_xfr/runtime/logs"
+    log "[DRY_RUN] Would ensure $MOUNT_POINT/laptopkiller/runtime/bin and $MOUNT_POINT/laptopkiller/runtime/logs"
 else
     sudo mkdir -p "$MOUNT_POINT/expander/runtime/bin" "$MOUNT_POINT/expander/runtime/logs"
     sudo mkdir -p "$MOUNT_POINT/logfile_xfr/runtime/bin" "$MOUNT_POINT/logfile_xfr/runtime/logs"
+    sudo mkdir -p "$MOUNT_POINT/laptopkiller/runtime/bin" "$MOUNT_POINT/laptopkiller/runtime/logs"
 fi
 pass "Verified /data structure at $MOUNT_POINT"
 
@@ -164,12 +182,15 @@ if [[ "$MOUNT_POINT" == "/data" ]]; then
     if [[ "$DRY_RUN" == "1" ]]; then
         log "[DRY_RUN] Would create symlink: /opt/logfile_xfr -> /data/logfile_xfr"
         log "[DRY_RUN] Would create symlink: /opt/expander -> /data/expander"
+        log "[DRY_RUN] Would create symlink: /opt/laptopkiller -> /data/laptopkiller"
     else
         sudo mkdir -p /opt
         sudo ln -sfn /data/logfile_xfr /opt/logfile_xfr
         sudo ln -sfn /data/expander /opt/expander
+        sudo ln -sfn /data/laptopkiller /opt/laptopkiller
         pass "Ensured symlink /opt/logfile_xfr -> /data/logfile_xfr"
         pass "Ensured symlink /opt/expander -> /data/expander"
+        pass "Ensured symlink /opt/laptopkiller -> /data/laptopkiller"
     fi
 else
     warn "Skipping /opt symlink updates because target is mounted at $MOUNT_POINT"
@@ -235,10 +256,14 @@ install_mirror_script() {
         target="logfile_xfr"
         mirror_repo_url="https://github.com/Wayne-Richardson-Rheem/LogFileXfr-Releases.git"
         mirror_repo_dir='$HOME/Dev/LogFileXfr-Releases'
-    else
+    elif [[ "$app_name" == "expander" ]]; then
         target="expander"
         mirror_repo_url="https://github.com/Wayne-Richardson-Rheem/Expander-Releases.git"
         mirror_repo_dir='$HOME/Dev/Expander-Releases'
+    else
+        target="laptop_killer"
+        mirror_repo_url="https://github.com/Wayne-Richardson-Rheem/LaptopKiller-Releases.git"
+        mirror_repo_dir='$HOME/Dev/LaptopKiller-Releases'
     fi
 
     if [[ "$DRY_RUN" == "1" ]]; then
@@ -513,6 +538,8 @@ fetch_runtime_from_repo_files() {
         LOGFILE_XFR_VERSION="$version"
     elif [[ "$app_name" == "expander" ]]; then
         EXPANDER_VERSION="$version"
+    elif [[ "$app_name" == "laptop_killer" ]]; then
+        LAPTOP_KILLER_VERSION="$version"
     fi
 }
 
@@ -848,6 +875,172 @@ EOF
     pass "Enabled expander-ota.timer"
 }
 
+install_laptop_killer_ota() {
+    local dest_dir="$1"
+    local ota_dir="$dest_dir/runtime/ota"
+    local key_dir="$ota_dir/keys"
+    local tools_dir="$dest_dir/tools"
+    local ota_script="$tools_dir/ota.sh"
+    local mirror_script="$tools_dir/mirror_release.sh"
+    local key_file="$key_dir/laptop_killer_ota_pubkey.asc"
+    local local_pubkey=""
+    if [[ -n "$SCRIPT_DIR" ]]; then
+        local_pubkey="$SCRIPT_DIR/laptop_killer_ota_pubkey.asc"
+    fi
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would ensure OTA directories: $ota_dir and $key_dir"
+        log "[DRY_RUN] Would install OTA updater script at $ota_script"
+        log "[DRY_RUN] Would install mirror_release.sh at $mirror_script"
+    else
+        sudo mkdir -p "$ota_dir" "$key_dir" "$tools_dir"
+        cat > "$TEMP_DIR/laptop_killer_ota.sh" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+BIN="laptop_killer"
+
+RUNTIME="${RUNTIME:-/opt/laptopkiller/runtime}"
+BIN_DIR="$RUNTIME/bin"
+OTA_DIR="$RUNTIME/ota"
+KEY_DIR="$OTA_DIR/keys"
+
+BASE_URL="https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LaptopKiller-Releases/main/releases"
+
+mkdir -p "$OTA_DIR"
+cd "$OTA_DIR"
+
+if [[ ! -x "$BIN_DIR/$BIN" ]]; then
+  echo "[OTA] ERROR: $BIN_DIR/$BIN does not exist or is not executable"
+  exit 1
+fi
+
+CURRENT_VERSION="$($BIN_DIR/$BIN --version | tr -d '\n\r')"
+echo "[OTA] Current version: $CURRENT_VERSION"
+
+echo "[OTA] Checking for update..."
+LATEST_VERSION="$(curl -fsSL "$BASE_URL/../latest.txt" | tr -d '\n\r')"
+echo "[OTA] Latest available version: $LATEST_VERSION"
+
+if [[ "$LATEST_VERSION" == "$CURRENT_VERSION" ]]; then
+  echo "[OTA] Already up to date ($CURRENT_VERSION)"
+  exit 0
+fi
+
+# Do not downgrade if release metadata is stale.
+if [[ "$(printf '%s\n%s\n' "$LATEST_VERSION" "$CURRENT_VERSION" | sort -V | tail -n1)" != "$LATEST_VERSION" ]]; then
+    echo "[OTA] Repository version ($LATEST_VERSION) is older than current ($CURRENT_VERSION); skipping downgrade"
+    exit 0
+fi
+
+VERSION="$LATEST_VERSION"
+BIN_FILE="$BIN-$VERSION"
+VERSION_DIR="$BASE_URL/v$VERSION"
+
+echo "[OTA] Downloading v$VERSION..."
+curl -fsSLO "$VERSION_DIR/$BIN_FILE"
+curl -fsSLO "$VERSION_DIR/$BIN_FILE.sha256"
+curl -fsSLO "$VERSION_DIR/$BIN_FILE.sha256.asc"
+
+echo "[OTA] Verifying signature..."
+gpg --batch --no-default-keyring \
+  --keyring "$OTA_DIR/ota-keyring.gpg" \
+  --import "$KEY_DIR/laptop_killer_ota_pubkey.asc" >/dev/null 2>&1 || true
+
+gpg --batch --no-default-keyring \
+  --keyring "$OTA_DIR/ota-keyring.gpg" \
+  --verify "$BIN_FILE.sha256.asc" "$BIN_FILE.sha256"
+
+echo "[OTA] Verifying checksum..."
+awk -v bin="$BIN_FILE" '{print $1 "  " bin}' "$BIN_FILE.sha256" | sha256sum -c -
+
+echo "[OTA] Saving rollback version..."
+echo "$CURRENT_VERSION" > "$OTA_DIR/last-good"
+
+echo "[OTA] Installing new binary..."
+install -m 755 "$BIN_FILE" "$BIN_DIR/$BIN_FILE"
+
+echo "[OTA] Switching symlink..."
+ln -sfn "$BIN_FILE" "$BIN_DIR/$BIN"
+
+echo "[OTA] Running smoke test..."
+NEW_VERSION="$($BIN_DIR/$BIN --version | tr -d '\n\r')" || true
+
+if [[ "$NEW_VERSION" != "$VERSION" ]]; then
+  echo "[OTA] Smoke test failed - rolling back"
+  OLD_VERSION="$(cat "$OTA_DIR/last-good")"
+  ln -sfn "$BIN-$OLD_VERSION" "$BIN_DIR/$BIN"
+  exit 1
+fi
+
+echo "[OTA] Update successful ($VERSION)"
+EOF
+        sudo install -m 755 "$TEMP_DIR/laptop_killer_ota.sh" "$ota_script"
+
+        install_mirror_script "laptop_killer" "$LAPTOP_KILLER_MIRROR_SCRIPT_URL" "$mirror_script" "$TEMP_DIR/laptop_killer_mirror_release.sh"
+    fi
+
+    install_ota_pubkey "laptop_killer" "$key_file" "$local_pubkey" "$LAPTOP_KILLER_OTA_PUBKEY_URL" "$TEMP_DIR/laptop_killer_ota_pubkey.asc" "$LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK"
+
+    pass "Configured LaptopKiller OTA assets"
+}
+
+install_laptop_killer_ota_timer() {
+    if [[ "$LAPTOP_KILLER_OTA_ENABLE_TIMER" != "1" ]]; then
+        log "Skipping OTA timer setup (LAPTOP_KILLER_OTA_ENABLE_TIMER=$LAPTOP_KILLER_OTA_ENABLE_TIMER)"
+        return 0
+    fi
+
+    if [[ "$MOUNT_POINT" != "/data" ]]; then
+        warn "Skipping OTA timer setup because target is mounted at $MOUNT_POINT"
+        return 0
+    fi
+
+    local svc_path="/etc/systemd/system/laptopkiller-ota.service"
+    local timer_path="/etc/systemd/system/laptopkiller-ota.timer"
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would install $svc_path"
+        log "[DRY_RUN] Would install $timer_path"
+        log "[DRY_RUN] Would run: systemctl daemon-reload && systemctl enable --now laptopkiller-ota.timer"
+        return 0
+    fi
+
+    cat > "$TEMP_DIR/laptopkiller-ota.service" <<'EOF'
+[Unit]
+Description=LaptopKiller OTA Update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=RUNTIME=/opt/laptopkiller/runtime
+ExecStart=/opt/laptopkiller/tools/ota.sh
+User=root
+Group=root
+EOF
+
+    cat > "$TEMP_DIR/laptopkiller-ota.timer" <<'EOF'
+[Unit]
+Description=Run LaptopKiller OTA Update Daily
+
+[Timer]
+OnBootSec=9min
+OnUnitActiveSec=24h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    sudo install -m 644 "$TEMP_DIR/laptopkiller-ota.service" "$svc_path"
+    sudo install -m 644 "$TEMP_DIR/laptopkiller-ota.timer" "$timer_path"
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now laptopkiller-ota.timer
+
+    pass "Enabled laptopkiller-ota.timer"
+}
+
 # Create temporary staging directory
 mkdir -p "$TEMP_DIR"
 log "Using temporary directory: $TEMP_DIR"
@@ -888,6 +1081,24 @@ if [[ "$DRY_RUN" != "1" ]]; then
     chmod 755 "$MOUNT_POINT/expander/runtime" "$MOUNT_POINT/expander/runtime/bin" 2>/dev/null || true
 fi
 
+# Update LaptopKiller
+log ""
+log "=== Updating LaptopKiller ==="
+fetch_runtime_from_repo_files "$LAPTOP_KILLER_GH_REPO" "$LAPTOP_KILLER_RELEASE_TAG" "laptop_killer" "$TEMP_DIR"
+stage_runtime_payload "$TEMP_DIR/laptop_killer" "$MOUNT_POINT/laptopkiller" "$LAPTOP_KILLER_VERSION"
+install_laptop_killer_ota "$MOUNT_POINT/laptopkiller"
+normalize_logs_layout "$MOUNT_POINT/laptopkiller"
+
+if [[ "$DRY_RUN" != "1" ]]; then
+    # Ensure app data is writable by the invoking non-root user.
+    if id "$APP_OWNER" >/dev/null 2>&1 && [[ "$APP_OWNER" != "root" ]]; then
+        sudo chown -R "$APP_OWNER:$APP_OWNER" "$MOUNT_POINT/laptopkiller" 2>/dev/null || true
+    else
+        warn "Could not resolve non-root owner; leaving laptopkiller ownership unchanged"
+    fi
+    chmod 755 "$MOUNT_POINT/laptopkiller/runtime" "$MOUNT_POINT/laptopkiller/runtime/bin" 2>/dev/null || true
+fi
+
 # Verify update
 log ""
 log "=== Verifying Update ==="
@@ -896,6 +1107,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
     pass "[DRY_RUN] Verification would check:"
     pass "[DRY_RUN]   - $MOUNT_POINT/logfile_xfr/runtime/bin/logfile_xfr (executable)"
     pass "[DRY_RUN]   - $MOUNT_POINT/expander/runtime/bin/expander (executable)"
+    pass "[DRY_RUN]   - $MOUNT_POINT/laptopkiller/runtime/bin/laptop_killer (executable)"
 else
     if [[ -x "$MOUNT_POINT/logfile_xfr/runtime/bin/logfile_xfr" ]]; then
         pass "LogFileXfr executable verified"
@@ -909,20 +1121,28 @@ else
         fatal "Expander executable not found or not executable"
     fi
     
+    if [[ -x "$MOUNT_POINT/laptopkiller/runtime/bin/laptop_killer" ]]; then
+        pass "LaptopKiller executable verified"
+    else
+        fatal "LaptopKiller executable not found or not executable"
+    fi
+    
     # Test binaries if possible
     if command -v file >/dev/null 2>&1; then
         log "Checking binary types..."
         file "$MOUNT_POINT/logfile_xfr/runtime/bin/logfile_xfr" || warn "Could not verify logfile_xfr binary type"
         file "$MOUNT_POINT/expander/runtime/bin/expander" || warn "Could not verify expander binary type"
+        file "$MOUNT_POINT/laptopkiller/runtime/bin/laptop_killer" || warn "Could not verify laptop_killer binary type"
     fi
 fi
 
 install_logfile_xfr_ota_timer
 install_expander_ota_timer
+install_laptop_killer_ota_timer
 
 log ""
 pass "=== Update Complete ==="
-log "LogFileXfr and Expander have been successfully updated on this system."
+log "LogFileXfr, Expander, and LaptopKiller have been successfully updated on this system."
 log "Changes will take effect when services are restarted."
 
 if [[ "$DRY_RUN" == "1" ]]; then
