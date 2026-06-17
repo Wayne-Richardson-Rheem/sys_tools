@@ -17,6 +17,8 @@
 #   EXPANDER_RELEASE_TAG       Version tag (default: latest)
 #   LOGFILE_XFR_OTA_PUBKEY_URL OTA public key URL (optional)
 #   EXPANDER_OTA_PUBKEY_URL    OTA public key URL (optional)
+#   LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK Additional logfile_xfr pubkey URL (optional)
+#   EXPANDER_OTA_PUBKEY_URL_FALLBACK Additional expander pubkey URL (optional)
 #   LOGFILE_XFR_MIRROR_SCRIPT_URL URL for logfile_xfr mirror_release.sh override (optional)
 #   EXPANDER_MIRROR_SCRIPT_URL URL for expander mirror_release.sh override (optional)
 #   LOGFILE_XFR_OTA_ENABLE_TIMER Enable LogFileXfr OTA timer (1/0)
@@ -42,6 +44,8 @@ LOGFILE_XFR_RELEASE_TAG="${LOGFILE_XFR_RELEASE_TAG:-latest}"
 EXPANDER_RELEASE_TAG="${EXPANDER_RELEASE_TAG:-latest}"
 LOGFILE_XFR_OTA_PUBKEY_URL="${LOGFILE_XFR_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr-Releases/main/logfile_xfr_ota_pubkey.asc}"
 EXPANDER_OTA_PUBKEY_URL="${EXPANDER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander-Releases/main/expander_ota_pubkey.asc}"
+LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK="${LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr/main/logfile_xfr_ota_pubkey.asc}"
+EXPANDER_OTA_PUBKEY_URL_FALLBACK="${EXPANDER_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander/main/expander_ota_pubkey.asc}"
 LOGFILE_XFR_MIRROR_SCRIPT_URL="${LOGFILE_XFR_MIRROR_SCRIPT_URL:-}"
 EXPANDER_MIRROR_SCRIPT_URL="${EXPANDER_MIRROR_SCRIPT_URL:-}"
 LOGFILE_XFR_OTA_ENABLE_TIMER="${LOGFILE_XFR_OTA_ENABLE_TIMER:-1}"
@@ -324,6 +328,9 @@ install_ota_pubkey() {
     local local_pubkey="$3"
     local pubkey_url="$4"
     local tmp_pubkey="$5"
+    shift 5
+    local url
+    local candidate_urls=("$pubkey_url" "$@")
 
     if [[ -n "$local_pubkey" && -f "$local_pubkey" ]]; then
         if [[ "$DRY_RUN" == "1" ]]; then
@@ -345,11 +352,18 @@ install_ota_pubkey() {
         return 0
     fi
 
-    if curl -fsSL "$pubkey_url" -o "$tmp_pubkey" 2>/dev/null && [[ -s "$tmp_pubkey" ]]; then
-        sudo install -m 644 "$tmp_pubkey" "$key_file"
-    else
-        warn "Could not download OTA pubkey for $app_name; OTA signature verification will fail until key is installed"
-    fi
+    for url in "${candidate_urls[@]}"; do
+        if [[ -z "$url" ]]; then
+            continue
+        fi
+        if curl -fsSL "$url" -o "$tmp_pubkey" 2>/dev/null && [[ -s "$tmp_pubkey" ]]; then
+            sudo install -m 644 "$tmp_pubkey" "$key_file"
+            log "Installed OTA pubkey for $app_name from $url"
+            return 0
+        fi
+    done
+
+    warn "Could not download OTA pubkey for $app_name from configured URLs; OTA signature verification will fail until key is installed"
 }
 
 verify_runtime_checksum() {
@@ -607,7 +621,7 @@ EOF
         install_mirror_script "logfile_xfr" "$LOGFILE_XFR_MIRROR_SCRIPT_URL" "$mirror_script" "$TEMP_DIR/logfile_xfr_mirror_release.sh"
     fi
 
-    install_ota_pubkey "logfile_xfr" "$key_file" "$local_pubkey" "$LOGFILE_XFR_OTA_PUBKEY_URL" "$TEMP_DIR/logfile_xfr_ota_pubkey.asc"
+    install_ota_pubkey "logfile_xfr" "$key_file" "$local_pubkey" "$LOGFILE_XFR_OTA_PUBKEY_URL" "$TEMP_DIR/logfile_xfr_ota_pubkey.asc" "$LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK"
 
     pass "Configured LogFileXfr OTA assets"
 }
@@ -773,7 +787,7 @@ EOF
         install_mirror_script "expander" "$EXPANDER_MIRROR_SCRIPT_URL" "$mirror_script" "$TEMP_DIR/expander_mirror_release.sh"
     fi
 
-    install_ota_pubkey "expander" "$key_file" "$local_pubkey" "$EXPANDER_OTA_PUBKEY_URL" "$TEMP_DIR/expander_ota_pubkey.asc"
+    install_ota_pubkey "expander" "$key_file" "$local_pubkey" "$EXPANDER_OTA_PUBKEY_URL" "$TEMP_DIR/expander_ota_pubkey.asc" "$EXPANDER_OTA_PUBKEY_URL_FALLBACK"
 
     pass "Configured Expander OTA assets"
 }
