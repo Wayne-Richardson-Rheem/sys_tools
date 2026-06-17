@@ -48,6 +48,13 @@ LAPTOPKILLER_SRC="${LAPTOPKILLER_SRC:-$REALHOME/Dev/LaptopKiller}"
 EXPANDER_SRC="${EXPANDER_SRC:-$REALHOME/Dev/Expander}"
 LOGFILE_XFR_SRC="${LOGFILE_XFR_SRC:-$REALHOME/Dev/LogFileXfr}"
 
+LAPTOPKILLER_CONFIG_DIR=""
+if [[ -d "$LAPTOPKILLER_SRC/runtime/config" ]]; then
+  LAPTOPKILLER_CONFIG_DIR="$LAPTOPKILLER_SRC/runtime/config"
+elif [[ -d "$LAPTOPKILLER_SRC/runtime/configs" ]]; then
+  LAPTOPKILLER_CONFIG_DIR="$LAPTOPKILLER_SRC/runtime/configs"
+fi
+
 
 ###############################################################################
 # TOOLCHAIN CONFIGURATION (WSL cross-compile support)
@@ -360,11 +367,11 @@ if [[ "$STUB_MODE" != "1" ]]; then
   [[ -f "$LAPTOPKILLER_SRC/laptop_killer.env" ]] \
     || fatal "Missing LaptopKiller env file: $LAPTOPKILLER_SRC/laptop_killer.env"
 
-  [[ -d "$LAPTOPKILLER_SRC/runtime/configs" ]] \
-    || fatal "Missing LaptopKiller configs directory: $LAPTOPKILLER_SRC/runtime/configs"
+  [[ -n "$LAPTOPKILLER_CONFIG_DIR" ]] \
+    || fatal "Missing LaptopKiller config directory: $LAPTOPKILLER_SRC/runtime/config or $LAPTOPKILLER_SRC/runtime/configs"
 
-  [[ -f "$LAPTOPKILLER_SRC/runtime/configs/sys_config.txt" ]] \
-    || fatal "Missing LaptopKiller sys_config.txt: $LAPTOPKILLER_SRC/runtime/configs/sys_config.txt"
+  [[ -f "$LAPTOPKILLER_CONFIG_DIR/sys_config.txt" ]] \
+    || fatal "Missing LaptopKiller sys_config.txt: $LAPTOPKILLER_CONFIG_DIR/sys_config.txt"
 
   [[ -d "$EXPANDER_SRC/tools" ]] \
     || fatal "Missing Expander tools directory: $EXPANDER_SRC/tools"
@@ -1607,11 +1614,11 @@ else
     warn "Laptop Killer env file not found at $LAPTOPKILLER_SRC/laptop_killer.env"
   fi
 
-  if [[ -d "$LAPTOPKILLER_SRC/runtime/configs" ]]; then
-    sudo mkdir -p "$DATA_MNT/laptopkiller/runtime/configs"
-    sudo cp -a "$LAPTOPKILLER_SRC/runtime/configs/." "$DATA_MNT/laptopkiller/runtime/configs/"
+  if [[ -n "$LAPTOPKILLER_CONFIG_DIR" ]]; then
+    sudo mkdir -p "$DATA_MNT/laptopkiller/runtime/config"
+    sudo cp -a "$LAPTOPKILLER_CONFIG_DIR/." "$DATA_MNT/laptopkiller/runtime/config/"
   else
-    warn "Laptop Killer config directory not found at $LAPTOPKILLER_SRC/runtime/configs"
+    warn "Laptop Killer config directory not found at $LAPTOPKILLER_SRC/runtime/config or $LAPTOPKILLER_SRC/runtime/configs"
   fi
 fi
 
