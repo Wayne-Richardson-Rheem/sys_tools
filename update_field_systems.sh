@@ -69,6 +69,7 @@ DRY_RUN="${DRY_RUN:-0}"
 LOGFILE_XFR_VERSION=""
 EXPANDER_VERSION=""
 LAPTOP_KILLER_VERSION=""
+LAPTOP_KILLER_FETCH_OK="0"
 
 # Get script directory (safely handle piped execution where BASH_SOURCE is unset)
 SCRIPT_DIR=""
@@ -394,6 +395,7 @@ install_ota_pubkey() {
 verify_runtime_checksum() {
     local checksum_file="$1"
     local runtime_dir="$2"
+    local allow_failure="${3:-0}"
     local runtime_base
     
     runtime_base=$(basename "$runtime_dir")
@@ -405,6 +407,10 @@ verify_runtime_checksum() {
     warn "Direct checksum verification failed, attempting path normalization..."
     
     if [[ ! -f "$checksum_file" ]]; then
+        if [[ "$allow_failure" == "1" ]]; then
+            warn "Checksum file not found: $checksum_file"
+            return 1
+        fi
         fatal "Checksum file not found: $checksum_file"
     fi
     
@@ -431,6 +437,11 @@ verify_runtime_checksum() {
         return 0
     fi
     
+    if [[ "$allow_failure" == "1" ]]; then
+        warn "Checksum verification failed for $runtime_base"
+        return 1
+    fi
+
     fatal "Checksum verification failed for $runtime_base"
 }
 
@@ -471,7 +482,8 @@ fetch_runtime_from_repo_files() {
     local tag="$2"
     local app_name="$3"
     local temp_stage="$4"
-    local version owner repo_name api_url
+    local allow_missing_release="${5:-0}"
+    local version owner repo_name api_url release_json assets_json
 
     # Split repo into owner/name
     owner="${repo%%/*}"
@@ -485,51 +497,100 @@ fetch_runtime_from_repo_files() {
         api_url="https://api.github.com/repos/$repo/releases/tags/$tag"
     fi
 
-    version=$(curl -sSf "$api_url" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+    if ! release_json=$(curl -sSf "$api_url"); then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Could not fetch release metadata for $app_name from $repo ($api_url); skipping runtime fetch"
+            return 1
+        fi
+        fatal "Failed to fetch release metadata for $app_name from $repo"
+    fi
+
+    if ! version=$(printf '%s' "$release_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))" 2>/dev/null); then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Release metadata for $app_name in $repo did not contain a usable tag_name; skipping runtime fetch"
+            return 1
+        fi
+        fatal "Failed to parse release version from $repo"
+    fi
 
     if [[ -z "$version" ]]; then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Empty release version for $app_name in $repo; skipping runtime fetch"
+            return 1
+        fi
         fatal "Failed to fetch latest release version from $repo"
     fi
 
     log "Latest version: $version"
 
     # Download assets from GitHub Release
-    local assets_json
-    assets_json=$(curl -sSf "$api_url" | \
-        python3 -c "import sys,json; [print(a['browser_download_url']) for a in json.load(sys.stdin)['assets']]")
+    if ! assets_json=$(printf '%s' "$release_json" | \
+        python3 -c "import sys,json; [print(a['browser_download_url']) for a in json.load(sys.stdin)['assets']]" 2>/dev/null); then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Could not parse release assets for $app_name from $repo; skipping runtime fetch"
+            return 1
+        fi
+        fatal "Failed to parse release assets for $app_name from $repo"
+    fi
 
     local release_url checksum_url
     release_url=$(echo "$assets_json" | grep -E "/${app_name}-${version}$" | head -1)
     checksum_url=$(echo "$assets_json" | grep -E "/${app_name}-${version}\.sha256$" | head -1)
 
     if [[ -z "$release_url" ]]; then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Could not find release asset for ${app_name}-${version} in $repo; skipping runtime fetch"
+            return 1
+        fi
         fatal "Could not find release asset for ${app_name}-${version} in $repo"
     fi
     if [[ -z "$checksum_url" ]]; then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Could not find checksum asset for ${app_name}-${version}.sha256 in $repo; skipping runtime fetch"
+            return 1
+        fi
         fatal "Could not find checksum asset for ${app_name}-${version}.sha256 in $repo"
     fi
 
     log "Downloading $app_name checksum..."
     if ! curl -sSfL "$checksum_url" > "$temp_stage/${app_name}.sha256"; then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Failed to download checksum for $app_name from $repo; skipping runtime fetch"
+            return 1
+        fi
         fatal "Failed to download checksum from $repo"
     fi
 
     if [[ ! -s "$temp_stage/${app_name}.sha256" ]]; then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Checksum file is empty for $app_name: $checksum_url; skipping runtime fetch"
+            return 1
+        fi
         fatal "Checksum file is empty: $checksum_url"
     fi
 
     log "Downloading $app_name runtime..."
     if ! curl -sSfL "$release_url" > "$temp_stage/$app_name"; then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Failed to download $app_name from $repo; skipping runtime fetch"
+            return 1
+        fi
         fatal "Failed to download $app_name from $repo"
     fi
 
     if [[ ! -s "$temp_stage/$app_name" ]]; then
+        if [[ "$allow_missing_release" == "1" ]]; then
+            warn "Downloaded $app_name binary is empty: $release_url; skipping runtime fetch"
+            return 1
+        fi
         fatal "Downloaded binary is empty: $release_url"
     fi
 
     # Verify checksum
     cd "$temp_stage"
-    verify_runtime_checksum "${app_name}.sha256" "$app_name"
+    if ! verify_runtime_checksum "${app_name}.sha256" "$app_name" "$allow_missing_release"; then
+        return 1
+    fi
     cd - >/dev/null
 
     pass "Downloaded and verified $app_name version $version"
@@ -1084,8 +1145,12 @@ fi
 # Update LaptopKiller
 log ""
 log "=== Updating LaptopKiller ==="
-fetch_runtime_from_repo_files "$LAPTOP_KILLER_GH_REPO" "$LAPTOP_KILLER_RELEASE_TAG" "laptop_killer" "$TEMP_DIR"
-stage_runtime_payload "$TEMP_DIR/laptop_killer" "$MOUNT_POINT/laptopkiller" "$LAPTOP_KILLER_VERSION"
+if fetch_runtime_from_repo_files "$LAPTOP_KILLER_GH_REPO" "$LAPTOP_KILLER_RELEASE_TAG" "laptop_killer" "$TEMP_DIR" "1"; then
+    LAPTOP_KILLER_FETCH_OK="1"
+    stage_runtime_payload "$TEMP_DIR/laptop_killer" "$MOUNT_POINT/laptopkiller" "$LAPTOP_KILLER_VERSION"
+else
+    warn "LaptopKiller runtime update skipped because release artifacts were not available"
+fi
 install_laptop_killer_ota "$MOUNT_POINT/laptopkiller"
 normalize_logs_layout "$MOUNT_POINT/laptopkiller"
 
@@ -1123,8 +1188,10 @@ else
     
     if [[ -x "$MOUNT_POINT/laptopkiller/runtime/bin/laptop_killer" ]]; then
         pass "LaptopKiller executable verified"
-    else
+    elif [[ "$LAPTOP_KILLER_FETCH_OK" == "1" ]]; then
         fatal "LaptopKiller executable not found or not executable"
+    else
+        warn "LaptopKiller executable not present; runtime update was skipped earlier"
     fi
     
     # Test binaries if possible
