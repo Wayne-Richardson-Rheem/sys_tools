@@ -419,23 +419,23 @@ stage_runtime_payload() {
     
     if [[ "$src_payload" == *.tar.gz ]]; then
         log "Extracting $app_name from tar.gz..."
-        mkdir -p "$dest_dir/runtime"
+        sudo mkdir -p "$dest_dir/runtime"
         if [[ "$DRY_RUN" == "1" ]]; then
             log "[DRY_RUN] Would extract: tar -xzf $src_payload -C $dest_dir/runtime"
         else
-            tar -xzf "$src_payload" -C "$dest_dir/runtime"
+            sudo tar -xzf "$src_payload" -C "$dest_dir/runtime"
         fi
     else
         log "Copying $app_name binary..."
-        mkdir -p "$dest_dir/runtime/bin"
+        sudo mkdir -p "$dest_dir/runtime/bin"
         local versioned_name="$app_name-$version"
         if [[ "$DRY_RUN" == "1" ]]; then
             log "[DRY_RUN] Would copy: $src_payload -> $dest_dir/runtime/bin/$versioned_name"
             log "[DRY_RUN] Would set symlink: $dest_dir/runtime/bin/$app_name -> $versioned_name"
         else
-            cp "$src_payload" "$dest_dir/runtime/bin/$versioned_name"
-            chmod 755 "$dest_dir/runtime/bin/$versioned_name"
-            ln -sfn "$versioned_name" "$dest_dir/runtime/bin/$app_name"
+            sudo cp "$src_payload" "$dest_dir/runtime/bin/$versioned_name"
+            sudo chmod 755 "$dest_dir/runtime/bin/$versioned_name"
+            sudo ln -sfn "$versioned_name" "$dest_dir/runtime/bin/$app_name"
         fi
     fi
     pass "Staged $app_name runtime"
