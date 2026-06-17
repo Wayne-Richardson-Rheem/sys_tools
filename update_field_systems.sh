@@ -146,11 +146,11 @@ fi
 
 # Always ensure required subdirectories exist (handles partially initialized systems).
 if [[ "$DRY_RUN" == "1" ]]; then
-    log "[DRY_RUN] Would ensure $MOUNT_POINT/expander/runtime/bin and $MOUNT_POINT/expander/logs"
-    log "[DRY_RUN] Would ensure $MOUNT_POINT/logfile_xfr/runtime/bin and $MOUNT_POINT/logfile_xfr/logs"
+    log "[DRY_RUN] Would ensure $MOUNT_POINT/expander/runtime/bin and $MOUNT_POINT/expander/runtime/logs"
+    log "[DRY_RUN] Would ensure $MOUNT_POINT/logfile_xfr/runtime/bin and $MOUNT_POINT/logfile_xfr/runtime/logs"
 else
-    sudo mkdir -p "$MOUNT_POINT/expander/runtime/bin" "$MOUNT_POINT/expander/logs"
-    sudo mkdir -p "$MOUNT_POINT/logfile_xfr/runtime/bin" "$MOUNT_POINT/logfile_xfr/logs"
+    sudo mkdir -p "$MOUNT_POINT/expander/runtime/bin" "$MOUNT_POINT/expander/runtime/logs"
+    sudo mkdir -p "$MOUNT_POINT/logfile_xfr/runtime/bin" "$MOUNT_POINT/logfile_xfr/runtime/logs"
 fi
 pass "Verified /data structure at $MOUNT_POINT"
 
@@ -185,6 +185,36 @@ github_api_get() {
 github_raw_get() {
     local url="$1"
     curl -sSf "$url"
+}
+
+# Normalize app log layout to a single directory at runtime/logs.
+normalize_logs_layout() {
+    local app_root="$1"
+    local app_name
+    local old_logs
+    local runtime_logs
+
+    app_name="$(basename "$app_root")"
+    old_logs="$app_root/logs"
+    runtime_logs="$app_root/runtime/logs"
+
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[DRY_RUN] Would ensure logs directory exists: $runtime_logs"
+        if [[ -d "$old_logs" ]]; then
+            log "[DRY_RUN] Would migrate legacy logs from $old_logs to $runtime_logs"
+            log "[DRY_RUN] Would remove legacy logs directory: $old_logs"
+        fi
+        return 0
+    fi
+
+    sudo mkdir -p "$runtime_logs"
+
+    if [[ -d "$old_logs" ]]; then
+        # Copy then remove to preserve history on systems with existing top-level logs.
+        sudo cp -a "$old_logs/." "$runtime_logs/" 2>/dev/null || true
+        sudo rm -rf "$old_logs"
+        pass "Normalized $app_name logs to $runtime_logs"
+    fi
 }
 
 verify_runtime_checksum() {
@@ -715,6 +745,7 @@ log "=== Updating LogFileXfr ==="
 fetch_runtime_from_repo_files "$LOGFILE_XFR_GH_REPO" "$LOGFILE_XFR_RELEASE_TAG" "logfile_xfr" "$TEMP_DIR"
 stage_runtime_payload "$TEMP_DIR/logfile_xfr" "$MOUNT_POINT/logfile_xfr" "$LOGFILE_XFR_VERSION"
 install_logfile_xfr_ota "$MOUNT_POINT/logfile_xfr"
+normalize_logs_layout "$MOUNT_POINT/logfile_xfr"
 
 if [[ "$DRY_RUN" != "1" ]]; then
     # Ensure app data is writable by the invoking non-root user.
@@ -732,6 +763,7 @@ log "=== Updating Expander ==="
 fetch_runtime_from_repo_files "$EXPANDER_GH_REPO" "$EXPANDER_RELEASE_TAG" "expander" "$TEMP_DIR"
 stage_runtime_payload "$TEMP_DIR/expander" "$MOUNT_POINT/expander" "$EXPANDER_VERSION"
 install_expander_ota "$MOUNT_POINT/expander"
+normalize_logs_layout "$MOUNT_POINT/expander"
 
 if [[ "$DRY_RUN" != "1" ]]; then
     # Ensure app data is writable by the invoking non-root user.
