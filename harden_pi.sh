@@ -159,6 +159,43 @@ part() {
 
 
 ###############################################################################
+# Stage OTA unit files from app tools into immutable root and enable timers
+###############################################################################
+stage_ota_units_from_tools() {
+  local app_name="$1"
+  local tools_dir="$2"
+  local unit_dest="$BUILD_ROOT/etc/systemd/system"
+
+  if [[ ! -d "$tools_dir" ]]; then
+    warn "Skipping OTA unit staging for $app_name (missing tools dir: $tools_dir)"
+    return 0
+  fi
+
+  sudo mkdir -p "$unit_dest" "$unit_dest/timers.target.wants"
+
+  local staged_any=0
+  while IFS= read -r -d '' unit_file; do
+    local unit_name
+    unit_name="$(basename "$unit_file")"
+    sudo install -m 0644 "$unit_file" "$unit_dest/$unit_name"
+    info "Staged OTA unit for $app_name: $unit_name"
+    staged_any=1
+  done < <(find "$tools_dir" -maxdepth 1 -type f \( -name '*ota.service' -o -name '*ota.timer' \) -print0)
+
+  while IFS= read -r -d '' timer_file; do
+    local timer_name
+    timer_name="$(basename "$timer_file")"
+    sudo ln -sfn "/etc/systemd/system/$timer_name" "$unit_dest/timers.target.wants/$timer_name"
+    info "Enabled OTA timer for $app_name: $timer_name"
+  done < <(find "$tools_dir" -maxdepth 1 -type f -name '*ota.timer' -print0)
+
+  if [[ "$staged_any" -eq 0 ]]; then
+    warn "No OTA unit files found for $app_name in $tools_dir"
+  fi
+}
+
+
+###############################################################################
 # STUB HELPERS
 ###############################################################################
 create_stub_rootfs() {
@@ -378,6 +415,18 @@ if [[ "$STUB_MODE" != "1" ]]; then
 
   [[ -d "$LOGFILE_XFR_SRC/tools" ]] \
     || fatal "Missing LogFileXfr tools directory: $LOGFILE_XFR_SRC/tools"
+
+  [[ -d "$LAPTOPKILLER_SRC/tools" ]] \
+    || fatal "Missing LaptopKiller tools directory: $LAPTOPKILLER_SRC/tools"
+
+  [[ -f "$EXPANDER_SRC/tools/ota.sh" ]] \
+    || fatal "Missing Expander OTA script: $EXPANDER_SRC/tools/ota.sh"
+
+  [[ -f "$LOGFILE_XFR_SRC/tools/ota.sh" ]] \
+    || fatal "Missing LogFileXfr OTA script: $LOGFILE_XFR_SRC/tools/ota.sh"
+
+  [[ -f "$LAPTOPKILLER_SRC/tools/ota.sh" ]] \
+    || fatal "Missing LaptopKiller OTA script: $LAPTOPKILLER_SRC/tools/ota.sh"
 fi
 
 info "[PREFLIGHT] App runtime payloads OK"
@@ -1620,6 +1669,15 @@ else
   else
     warn "Laptop Killer config directory not found at $LAPTOPKILLER_SRC/runtime/config or $LAPTOPKILLER_SRC/runtime/configs"
   fi
+
+  if [[ -d "$LAPTOPKILLER_SRC/tools" ]]; then
+    sudo mkdir -p "$DATA_MNT/laptopkiller/tools"
+    sudo cp -a "$LAPTOPKILLER_SRC/tools/." "$DATA_MNT/laptopkiller/tools/"
+    sudo chmod 755 "$DATA_MNT/laptopkiller/tools"
+    sudo find "$DATA_MNT/laptopkiller/tools" -type f -exec chmod 755 {} +
+  else
+    warn "Laptop Killer tools directory not found at $LAPTOPKILLER_SRC/tools"
+  fi
 fi
 
 info "Cleaning Laptop Killer runtime logs (preserve Archive/ and xfer/ directories)..."
@@ -1638,6 +1696,11 @@ sudo chmod 644 "$DATA_MNT/laptopkiller/laptop_killer.env" 2>/dev/null || true
 
 info "Laptop Killer app path permissions on data partition:"
 sudo stat -c '%A %u:%g %n' "$DATA_MNT/laptopkiller" "$DATA_MNT/laptopkiller/runtime" "$DATA_MNT/laptopkiller/runtime/bin" "$DATA_MNT/laptopkiller/runtime/logs" 2>/dev/null || true
+
+# Stage OTA units from all app tools and enable timers when unit files exist.
+stage_ota_units_from_tools "LaptopKiller" "$LAPTOPKILLER_SRC/tools"
+stage_ota_units_from_tools "Expander" "$EXPANDER_SRC/tools"
+stage_ota_units_from_tools "LogFileXfr" "$LOGFILE_XFR_SRC/tools"
 
 ###############################################################################
 # Seed Expander app runtime into /data
