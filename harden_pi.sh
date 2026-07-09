@@ -196,6 +196,42 @@ stage_ota_units_from_tools() {
 
 
 ###############################################################################
+# Normalize OTA script state path to /data/<app>/ota (not runtime/ota)
+###############################################################################
+normalize_ota_script_state_path() {
+  local app_name="$1"
+  local app_dir="$2"
+  local ota_script="$app_dir/tools/ota.sh"
+  local ota_state_dir="$app_dir/ota"
+  local ota_keys_dir="$ota_state_dir/keys"
+  local ota_line='OTA_DIR="${OTA_DIR:-'"$ota_state_dir"'}"'
+
+  if [[ ! -f "$ota_script" ]]; then
+    warn "Skipping OTA state-path normalization for $app_name (missing script: $ota_script)"
+    return 0
+  fi
+
+  sudo mkdir -p "$ota_keys_dir"
+
+  # Copy embedded OTA public keys (if present) to the new persistent OTA state path.
+  while IFS= read -r -d '' pubkey_file; do
+    local pubkey_name
+    pubkey_name="$(basename "$pubkey_file")"
+    sudo install -m 0644 "$pubkey_file" "$ota_keys_dir/$pubkey_name"
+    info "Staged OTA pubkey for $app_name: $pubkey_name"
+  done < <(find "$app_dir/tools" -maxdepth 1 -type f -name '*_ota_pubkey.asc' -print0)
+
+  # Rewrite only the known OTA state declaration if present.
+  if sudo grep -q '^OTA_DIR="\$RUNTIME/ota"$' "$ota_script"; then
+    sudo sed -i "s#^OTA_DIR=\"\\\$RUNTIME/ota\"#${ota_line}#" "$ota_script"
+    info "Normalized OTA state path for $app_name in $(basename "$ota_script")"
+  else
+    warn "OTA_DIR declaration not matched in $ota_script; leaving script unchanged"
+  fi
+}
+
+
+###############################################################################
 # STUB HELPERS
 ###############################################################################
 create_stub_rootfs() {
@@ -422,11 +458,20 @@ if [[ "$STUB_MODE" != "1" ]]; then
   [[ -f "$EXPANDER_SRC/tools/ota.sh" ]] \
     || fatal "Missing Expander OTA script: $EXPANDER_SRC/tools/ota.sh"
 
+  [[ -f "$EXPANDER_SRC/tools/expander_ota_pubkey.asc" ]] \
+    || fatal "Missing Expander OTA public key: $EXPANDER_SRC/tools/expander_ota_pubkey.asc"
+
   [[ -f "$LOGFILE_XFR_SRC/tools/ota.sh" ]] \
     || fatal "Missing LogFileXfr OTA script: $LOGFILE_XFR_SRC/tools/ota.sh"
 
+  [[ -f "$LOGFILE_XFR_SRC/tools/logfile_xfr_ota_pubkey.asc" ]] \
+    || fatal "Missing LogFileXfr OTA public key: $LOGFILE_XFR_SRC/tools/logfile_xfr_ota_pubkey.asc"
+
   [[ -f "$LAPTOPKILLER_SRC/tools/ota.sh" ]] \
     || fatal "Missing LaptopKiller OTA script: $LAPTOPKILLER_SRC/tools/ota.sh"
+
+  [[ -f "$LAPTOPKILLER_SRC/tools/laptop_killer_ota_pubkey.asc" ]] \
+    || fatal "Missing LaptopKiller OTA public key: $LAPTOPKILLER_SRC/tools/laptop_killer_ota_pubkey.asc"
 fi
 
 info "[PREFLIGHT] App runtime payloads OK"
@@ -1673,6 +1718,7 @@ else
   if [[ -d "$LAPTOPKILLER_SRC/tools" ]]; then
     sudo mkdir -p "$DATA_MNT/laptopkiller/tools"
     sudo cp -a "$LAPTOPKILLER_SRC/tools/." "$DATA_MNT/laptopkiller/tools/"
+    normalize_ota_script_state_path "LaptopKiller" "$DATA_MNT/laptopkiller"
     sudo chmod 755 "$DATA_MNT/laptopkiller/tools"
     sudo find "$DATA_MNT/laptopkiller/tools" -type f -exec chmod 755 {} +
   else
@@ -1718,6 +1764,7 @@ fi
 if [[ -d "$EXPANDER_SRC/tools" ]]; then
   sudo mkdir -p "$DATA_MNT/expander/tools"
   sudo cp -a "$EXPANDER_SRC/tools/""." "$DATA_MNT/expander/tools/"
+  normalize_ota_script_state_path "Expander" "$DATA_MNT/expander"
   sudo chmod 755 "$DATA_MNT/expander/tools"
   sudo find "$DATA_MNT/expander/tools" -type f -exec chmod 755 {} +
 else
@@ -1744,6 +1791,7 @@ fi
 if [[ -d "$LOGFILE_XFR_SRC/tools" ]]; then
   sudo mkdir -p "$DATA_MNT/logfile_xfr/tools"
   sudo cp -a "$LOGFILE_XFR_SRC/tools/""." "$DATA_MNT/logfile_xfr/tools/"
+  normalize_ota_script_state_path "LogFileXfr" "$DATA_MNT/logfile_xfr"
   sudo chmod 755 "$DATA_MNT/logfile_xfr/tools"
   sudo find "$DATA_MNT/logfile_xfr/tools" -type f -exec chmod 755 {} +
 else

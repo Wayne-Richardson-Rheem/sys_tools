@@ -13,7 +13,7 @@
 # Environment Variables (optional):
 #   LOGFILE_XFR_GH_REPO        GitHub repo (default: Wayne-Richardson-Rheem/LogFileXfr-Releases)
 #   EXPANDER_GH_REPO           GitHub repo (default: Wayne-Richardson-Rheem/Expander-Releases)
-#   LAPTOP_KILLER_GH_REPO      GitHub repo (default: Wayne-Richardson-Rheem/LaptopKiller-Releases)
+#   LAPTOP_KILLER_GH_REPO      GitHub repo (default: Wayne-Richardson-Rheem/Recon-Releases)
 #   LOGFILE_XFR_RELEASE_TAG    Version tag (default: latest)
 #   EXPANDER_RELEASE_TAG       Version tag (default: latest)
 #   LAPTOP_KILLER_RELEASE_TAG  Version tag (default: latest)
@@ -46,16 +46,16 @@ NC='\033[0m' # No Color
 # Defaults
 LOGFILE_XFR_GH_REPO="${LOGFILE_XFR_GH_REPO:-Wayne-Richardson-Rheem/LogFileXfr-Releases}"
 EXPANDER_GH_REPO="${EXPANDER_GH_REPO:-Wayne-Richardson-Rheem/Expander-Releases}"
-LAPTOP_KILLER_GH_REPO="${LAPTOP_KILLER_GH_REPO:-Wayne-Richardson-Rheem/LaptopKiller-Releases}"
+LAPTOP_KILLER_GH_REPO="${LAPTOP_KILLER_GH_REPO:-Wayne-Richardson-Rheem/Recon-Releases}"
 LOGFILE_XFR_RELEASE_TAG="${LOGFILE_XFR_RELEASE_TAG:-latest}"
 EXPANDER_RELEASE_TAG="${EXPANDER_RELEASE_TAG:-latest}"
 LAPTOP_KILLER_RELEASE_TAG="${LAPTOP_KILLER_RELEASE_TAG:-latest}"
 LOGFILE_XFR_OTA_PUBKEY_URL="${LOGFILE_XFR_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr-Releases/main/logfile_xfr_ota_pubkey.asc}"
 EXPANDER_OTA_PUBKEY_URL="${EXPANDER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander-Releases/main/expander_ota_pubkey.asc}"
-LAPTOP_KILLER_OTA_PUBKEY_URL="${LAPTOP_KILLER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LaptopKiller-Releases/main/laptop_killer_ota_pubkey.asc}"
+LAPTOP_KILLER_OTA_PUBKEY_URL="${LAPTOP_KILLER_OTA_PUBKEY_URL:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Recon-Releases/main/laptop_killer_ota_pubkey.asc}"
 LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK="${LOGFILE_XFR_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr/main/logfile_xfr_ota_pubkey.asc}"
 EXPANDER_OTA_PUBKEY_URL_FALLBACK="${EXPANDER_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander/main/expander_ota_pubkey.asc}"
-LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK="${LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LaptopKiller/main/laptop_killer_ota_pubkey.asc}"
+LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK="${LAPTOP_KILLER_OTA_PUBKEY_URL_FALLBACK:-https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Recon-Releases/main/laptop_killer_ota_pubkey.asc}"
 LOGFILE_XFR_MIRROR_SCRIPT_URL="${LOGFILE_XFR_MIRROR_SCRIPT_URL:-}"
 EXPANDER_MIRROR_SCRIPT_URL="${EXPANDER_MIRROR_SCRIPT_URL:-}"
 LAPTOP_KILLER_MIRROR_SCRIPT_URL="${LAPTOP_KILLER_MIRROR_SCRIPT_URL:-}"
@@ -263,8 +263,8 @@ install_mirror_script() {
         mirror_repo_dir='$HOME/Dev/Expander-Releases'
     else
         target="laptop_killer"
-        mirror_repo_url="https://github.com/Wayne-Richardson-Rheem/LaptopKiller-Releases.git"
-        mirror_repo_dir='$HOME/Dev/LaptopKiller-Releases'
+        mirror_repo_url="https://github.com/Wayne-Richardson-Rheem/Recon-Releases.git"
+        mirror_repo_dir='$HOME/Dev/Recon-Releases'
     fi
 
     if [[ "$DRY_RUN" == "1" ]]; then
@@ -608,7 +608,7 @@ fetch_runtime_from_repo_files() {
 
 install_logfile_xfr_ota() {
     local dest_dir="$1"
-    local ota_dir="$dest_dir/runtime/ota"
+    local ota_dir="$dest_dir/ota"
     local key_dir="$ota_dir/keys"
     local tools_dir="$dest_dir/tools"
     local ota_script="$tools_dir/ota.sh"
@@ -633,7 +633,7 @@ BIN="logfile_xfr"
 
 RUNTIME="${RUNTIME:-/opt/logfile_xfr/runtime}"
 BIN_DIR="$RUNTIME/bin"
-OTA_DIR="$RUNTIME/ota"
+OTA_DIR="${OTA_DIR:-/data/logfile_xfr/ota}"
 KEY_DIR="$OTA_DIR/keys"
 
 BASE_URL="https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LogFileXfr-Releases/main/releases"
@@ -746,6 +746,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=RUNTIME=/opt/logfile_xfr/runtime
+Environment=OTA_DIR=/data/logfile_xfr/ota
 ExecStart=/opt/logfile_xfr/tools/ota.sh
 User=root
 Group=root
@@ -774,7 +775,7 @@ EOF
 
 install_expander_ota() {
     local dest_dir="$1"
-    local ota_dir="$dest_dir/runtime/ota"
+    local ota_dir="$dest_dir/ota"
     local key_dir="$ota_dir/keys"
     local tools_dir="$dest_dir/tools"
     local ota_script="$tools_dir/ota.sh"
@@ -799,7 +800,7 @@ BIN="expander"
 
 RUNTIME="${RUNTIME:-/opt/expander/runtime}"
 BIN_DIR="$RUNTIME/bin"
-OTA_DIR="$RUNTIME/ota"
+OTA_DIR="${OTA_DIR:-/data/expander/ota}"
 KEY_DIR="$OTA_DIR/keys"
 
 BASE_URL="https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Expander-Releases/main/releases"
@@ -912,6 +913,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=RUNTIME=/opt/expander/runtime
+Environment=OTA_DIR=/data/expander/ota
 ExecStart=/opt/expander/tools/ota.sh
 User=root
 Group=root
@@ -940,7 +942,7 @@ EOF
 
 install_laptop_killer_ota() {
     local dest_dir="$1"
-    local ota_dir="$dest_dir/runtime/ota"
+    local ota_dir="$dest_dir/ota"
     local key_dir="$ota_dir/keys"
     local tools_dir="$dest_dir/tools"
     local ota_script="$tools_dir/ota.sh"
@@ -965,10 +967,10 @@ BIN="laptop_killer"
 
 RUNTIME="${RUNTIME:-/opt/laptopkiller/runtime}"
 BIN_DIR="$RUNTIME/bin"
-OTA_DIR="$RUNTIME/ota"
+OTA_DIR="${OTA_DIR:-/data/laptopkiller/ota}"
 KEY_DIR="$OTA_DIR/keys"
 
-BASE_URL="https://raw.githubusercontent.com/Wayne-Richardson-Rheem/LaptopKiller-Releases/main/releases"
+BASE_URL="https://raw.githubusercontent.com/Wayne-Richardson-Rheem/Recon-Releases/main/releases"
 
 mkdir -p "$OTA_DIR"
 cd "$OTA_DIR"
@@ -1078,6 +1080,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 Environment=RUNTIME=/opt/laptopkiller/runtime
+Environment=OTA_DIR=/data/laptopkiller/ota
 ExecStart=/opt/laptopkiller/tools/ota.sh
 User=root
 Group=root
