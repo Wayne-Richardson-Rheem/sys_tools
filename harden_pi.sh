@@ -1224,7 +1224,7 @@ sudo chown 33:33 "$BUILD_ROOT/var/log/recon" || true
 sudo chmod 0755 "$BUILD_ROOT/var/log/recon"
 
 # Install Wi-Fi scan CGI script from this workspace into the image.
-NETWORKS_PY_SRC="$REALHOME/sys_tools/networks.py"
+NETWORKS_PY_SRC="$REALHOME/Recon-Web-IF/usr/lib/cgi-bin/networks.py"
 if [[ -f "$NETWORKS_PY_SRC" ]]; then
   sudo mkdir -p "$BUILD_ROOT/usr/lib/cgi-bin"
   sudo install -m 0755 "$NETWORKS_PY_SRC" "$BUILD_ROOT/usr/lib/cgi-bin/networks.py"
@@ -1233,7 +1233,7 @@ else
 fi
 
 # Install Wi-Fi connect CGI script from this workspace into the image.
-CONNECT_PY_SRC="$REALHOME/sys_tools/connect.py"
+CONNECT_PY_SRC="$REALHOME/Recon-Web-IF/usr/lib/cgi-bin/connect.py"
 if [[ -f "$CONNECT_PY_SRC" ]]; then
   sudo mkdir -p "$BUILD_ROOT/usr/lib/cgi-bin"
   sudo install -m 0755 "$CONNECT_PY_SRC" "$BUILD_ROOT/usr/lib/cgi-bin/connect.py"
