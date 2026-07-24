@@ -1230,6 +1230,23 @@ sudo mkdir -p "$BUILD_ROOT/var/log/recon"
 sudo chown 33:33 "$BUILD_ROOT/var/log/recon" || true
 sudo chmod 0755 "$BUILD_ROOT/var/log/recon"
 
+# Install wifi-ap.sh and recon-ap-connect.sh scripts from this workspace into the image.
+WIFI_AP_SRC="$REALHOME/Recon-Web-IF/usr/local/bin/wifi-ap.sh"
+if [[ -f "$WIFI_AP_SRC" ]]; then
+  sudo mkdir -p "$BUILD_ROOT/usr/local/bin"
+  sudo install -m 0755 "$WIFI_AP_SRC" "$BUILD_ROOT/usr/local/bin/wifi-ap.sh"
+else
+  warn "Missing wifi-ap.sh source in workspace: $WIFI_AP_SRC"
+fi
+
+AP_CONNECT_SRC="$REALHOME/Recon-Web-IF/usr/local/bin/recon-ap-connect.sh"
+if [[ -f "$AP_CONNECT_SRC" ]]; then
+  sudo mkdir -p "$BUILD_ROOT/usr/local/bin"
+  sudo install -m 0755 "$AP_CONNECT_SRC" "$BUILD_ROOT/usr/local/bin/recon-ap-connect.sh"
+else
+  warn "Missing recon-ap-connect.sh source in workspace: $AP_CONNECT_SRC"
+fi
+
 # Install Wi-Fi scan CGI script from this workspace into the image.
 NETWORKS_PY_SRC="$REALHOME/Recon-Web-IF/usr/lib/cgi-bin/networks.py"
 if [[ -f "$NETWORKS_PY_SRC" ]]; then
