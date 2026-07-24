@@ -361,12 +361,15 @@ for timer in "${OTA_TIMERS[@]}"; do
         continue
     fi
 
-    # Confirm enablement symlink points at the timer unit.
-    if sudo unsquashfs -ll "$SQ" "$timer_link" 2>/dev/null | grep -Eq -- "-> /etc/systemd/system/$timer$"; then
+    # Confirm enablement symlink exists; accept either absolute or relative targets.
+    timer_entry="$(sudo unsquashfs -ll "$SQ" "$timer_link" 2>/dev/null | tail -n1 || true)"
+    if echo "$timer_entry" | grep -Eq '^[[:space:]]*l' \
+       && echo "$timer_entry" | grep -Eq -- "timers.target.wants/$timer[[:space:]]+->[[:space:]]+.+$"; then
         pass "OTA timer enabled in image (symlink present): $timer"
         OTA_TIMER_SUMMARY+=("$timer: ENABLED")
     else
         fail "OTA timer not enabled in image (missing/incorrect symlink): $timer"
+        warn "Timer listing for $timer: ${timer_entry:-<no entry>}"
         OTA_TIMER_SUMMARY+=("$timer: DISABLED")
     fi
 done
