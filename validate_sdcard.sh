@@ -362,7 +362,7 @@ for timer in "${OTA_TIMERS[@]}"; do
     fi
 
     # Confirm enablement symlink points at the timer unit.
-    if sudo unsquashfs -ll "$SQ" "$timer_link" 2>/dev/null | grep -Eq "-> /etc/systemd/system/$timer$"; then
+    if sudo unsquashfs -ll "$SQ" "$timer_link" 2>/dev/null | grep -Eq -- "-> /etc/systemd/system/$timer$"; then
         pass "OTA timer enabled in image (symlink present): $timer"
         OTA_TIMER_SUMMARY+=("$timer: ENABLED")
     else
