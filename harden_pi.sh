@@ -202,8 +202,15 @@ normalize_ota_script_state_path() {
   local app_name="$1"
   local app_dir="$2"
   local ota_script="$app_dir/tools/ota.sh"
-  local ota_state_dir="$app_dir/ota"
-  local ota_keys_dir="$ota_state_dir/keys"
+  local runtime_app_dir="$app_dir"
+  local staged_app_dir="$app_dir"
+  if [[ "$runtime_app_dir" == /mnt/data/* ]]; then
+    runtime_app_dir="/data/${runtime_app_dir#/mnt/data/}"
+  elif [[ "$runtime_app_dir" == /mnt/data ]]; then
+    runtime_app_dir="/data"
+  fi
+  local ota_state_dir="$runtime_app_dir/ota"
+  local ota_keys_dir="$staged_app_dir/ota/keys"
   local ota_line='OTA_DIR="${OTA_DIR:-'"$ota_state_dir"'}"'
 
   if [[ ! -f "$ota_script" ]]; then
@@ -221,9 +228,9 @@ normalize_ota_script_state_path() {
     info "Staged OTA pubkey for $app_name: $pubkey_name"
   done < <(find "$app_dir/tools" -maxdepth 1 -type f -name '*_ota_pubkey.asc' -print0)
 
-  # Rewrite only the known OTA state declaration if present.
-  if sudo grep -q '^OTA_DIR="\$RUNTIME/ota"$' "$ota_script"; then
-    sudo sed -i "s#^OTA_DIR=\"\\\$RUNTIME/ota\"#${ota_line}#" "$ota_script"
+  # Rewrite the first OTA_DIR assignment to the persistent /data path.
+  if sudo grep -qE '^[[:space:]]*OTA_DIR=' "$ota_script"; then
+    sudo sed -i -E "0,/^[[:space:]]*OTA_DIR=.*/s#^[[:space:]]*OTA_DIR=.*#${ota_line}#" "$ota_script"
     info "Normalized OTA state path for $app_name in $(basename "$ota_script")"
   else
     warn "OTA_DIR declaration not matched in $ota_script; leaving script unchanged"
