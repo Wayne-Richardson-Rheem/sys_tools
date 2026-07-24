@@ -339,8 +339,46 @@ else
 fi
 
 ###############################################################################
+# 14. OTA timer enablement validation (field-image expectation)
+###############################################################################
+OTA_TIMERS=(
+  "expander-ota.timer"
+  "logfile-xfr-ota.timer"
+  "laptopkiller-ota.timer"
+)
+
+OTA_TIMER_SUMMARY=()
+
+for timer in "${OTA_TIMERS[@]}"; do
+    timer_link="etc/systemd/system/timers.target.wants/$timer"
+
+    # Confirm timer unit exists in immutable payload.
+    if sq_has "etc/systemd/system/${timer//./\\.}$"; then
+        pass "OTA timer unit present in SquashFS: $timer"
+    else
+        fail "OTA timer unit missing in SquashFS: $timer"
+        OTA_TIMER_SUMMARY+=("$timer: MISSING UNIT")
+        continue
+    fi
+
+    # Confirm enablement symlink points at the timer unit.
+    if sudo unsquashfs -ll "$SQ" "$timer_link" 2>/dev/null | grep -Eq "-> /etc/systemd/system/$timer$"; then
+        pass "OTA timer enabled in image (symlink present): $timer"
+        OTA_TIMER_SUMMARY+=("$timer: ENABLED")
+    else
+        fail "OTA timer not enabled in image (missing/incorrect symlink): $timer"
+        OTA_TIMER_SUMMARY+=("$timer: DISABLED")
+    fi
+done
+
+###############################################################################
 # FINAL SUMMARY
 ###############################################################################
+echo
+echo "OTA TIMER SUMMARY:"
+for line in "${OTA_TIMER_SUMMARY[@]}"; do
+    echo "  - $line"
+done
 echo
 echo "PASS=$PASSCOUNT FAIL=$FAILCOUNT"
 

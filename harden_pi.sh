@@ -184,8 +184,15 @@ stage_ota_units_from_tools() {
 
   while IFS= read -r -d '' timer_file; do
     local timer_name
+    local timer_link
     timer_name="$(basename "$timer_file")"
-    sudo ln -sfn "/etc/systemd/system/$timer_name" "$unit_dest/timers.target.wants/$timer_name"
+    timer_link="$unit_dest/timers.target.wants/$timer_name"
+    sudo ln -sfn "/etc/systemd/system/$timer_name" "$timer_link"
+    if [[ -L "$timer_link" ]]; then
+      info "Verified OTA timer symlink in image: $timer_name"
+    else
+      fatal "Failed to enable OTA timer in image: $timer_name"
+    fi
     info "Enabled OTA timer for $app_name: $timer_name"
   done < <(find "$tools_dir" -maxdepth 1 -type f -name '*ota.timer' -print0)
 
