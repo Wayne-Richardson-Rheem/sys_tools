@@ -1232,11 +1232,12 @@ if [[ -f "$BUILD_ROOT/etc/apache2/ports.conf" ]]; then
     "$BUILD_ROOT/etc/apache2/ports.conf"
 fi
 
-# networks.py writes scan logs here; create it for CGI runtime.
-sudo mkdir -p "$BUILD_ROOT/var/log/recon"
-sudo chown 33:33 "$BUILD_ROOT/var/log/recon" || true
-sudo chmod 0755 "$BUILD_ROOT/var/log/recon"
+# Create reconlog group and reserve GID 1001 for Recon logging
+if ! grep -q '^reconlog:' "$BUILD_ROOT/etc/group"; then
+  echo "reconlog:x:1001:" | sudo tee -a "$BUILD_ROOT/etc/group" >/dev/null
+fi
 
+# networks.py writes scan logs here; create it for CGI runtime.
 # Install wifi-ap.sh and recon-ap-connect.sh scripts from this workspace into the image.
 WIFI_AP_SRC="$REALHOME/Recon-Web-IF/usr/local/bin/wifi-ap.sh"
 if [[ -f "$WIFI_AP_SRC" ]]; then
@@ -1277,6 +1278,50 @@ cat <<'EOF' | sudo tee "$BUILD_ROOT/etc/sudoers.d/www-data-iw" > /dev/null
 www-data ALL=(root) NOPASSWD: /usr/sbin/iw, /usr/bin/iw
 EOF
 sudo chmod 0440 "$BUILD_ROOT/etc/sudoers.d/www-data-iw"
+
+# Add www-data to the reconlog group
+if ! grep '^www-data:.*reconlog' "$BUILD_ROOT/etc/group" >/dev/null; then
+  sudo sed -i '/^www-data:/ s/$/,reconlog/' "$BUILD_ROOT/etc/group"
+fi
+
+# Add rheemtest to the reconlog group
+if ! grep '^rheemtest:.*reconlog' "$BUILD_ROOT/etc/group" >/dev/null; then
+  sudo sed -i '/^rheemtest:/ s/$/,reconlog/' "$BUILD_ROOT/etc/group"
+fi
+
+# Install wifi-watchdog.sh
+WIFI_WATCHDOG_SRC="$REALHOME/sys_tools/wifi-watchdog.sh"
+if [[ -f "$WIFI_WATCHDOG_SRC" ]]; then
+  sudo mkdir -p "$BUILD_ROOT/usr/local/bin"
+  sudo install -m 0755 \
+      "$WIFI_WATCHDOG_SRC" \
+      "$BUILD_ROOT/usr/local/bin/wifi-watchdog.sh"
+else
+  warn "Missing wifi-watchdog.sh source: $WIFI_WATCHDOG_SRC"
+fi
+
+# Install wifi-watchdog.service
+WATCHDOG_SERVICE_SRC="$REALHOME/sys_tools/wifi-watchdog.service"
+if [[ -f "$WATCHDOG_SERVICE_SRC" ]]; then
+  sudo mkdir -p "$BUILD_ROOT/etc/systemd/system"
+  sudo install -m 0644 \
+      "$WATCHDOG_SERVICE_SRC" \
+      "$BUILD_ROOT/etc/systemd/system/wifi-watchdog.service"
+else
+  warn "Missing wifi-watchdog.service source: $WATCHDOG_SERVICE_SRC"
+fi
+
+# Enable the service in the image
+sudo mkdir -p "$BUILD_ROOT/etc/systemd/system/multi-user.target.wants"
+sudo ln -sf /etc/systemd/system/wifi-watchdog.service "$BUILD_ROOT/etc/systemd/system/multi-user.target.wants/wifi-watchdog.service"
+
+# Create Recon logging directory and initial files
+sudo mkdir -p "$BUILD_ROOT/var/log/recon"
+sudo chown root:reconlog "$BUILD_ROOT/var/log/recon" || true
+sudo chmod 2775 "$BUILD_ROOT/var/log/recon"
+sudo touch "$BUILD_ROOT/var/log/recon/wifi-watchdog.log"
+sudo chown root:reconlog "$BUILD_ROOT/var/log/recon/wifi-watchdog.log"
+sudo chmod 664 "$BUILD_ROOT/var/log/recon/wifi-watchdog.log"
 
 # Normalize Laptop Killer service to the /opt -> /data app layout and ensure
 # it is enabled in the image when the unit exists.

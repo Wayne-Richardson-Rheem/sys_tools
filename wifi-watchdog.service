@@ -1,0 +1,13 @@
+[Unit]
+Description=Wi-Fi Monitoring Watchdog
+After=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/wifi-watchdog.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
