@@ -4,7 +4,8 @@
 export SSH_AUTH_SOCK="$HOME/.ssh/agent.sock"
 
 # Start agent only if socket is missing.
-if [[ ! -S "$SSH_AUTH_SOCK" ]]; then
+if [[ ! -S "$SSH_AUTH_SOCK" ]] || ! ssh-add -l >/dev/null 2>&1; then
+  rm -f "$SSH_AUTH_SOCK"
   eval "$(ssh-agent -a "$SSH_AUTH_SOCK")" >/dev/null
 fi
 
@@ -16,3 +17,5 @@ if ! ssh-add -l >/dev/null 2>&1; then
     echo "[setupgithub] No TTY available; skipping ssh-add"
   fi
 fi
+
+
