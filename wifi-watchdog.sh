@@ -22,8 +22,13 @@ INTERFACE="wlan0"
 LOG_TAG="wifi-watchdog"
 LOG_FILE="/var/log/recon/wifi-watchdog.log"
 
-mkdir -p /var/log/recon
-touch "$LOG_FILE"
+mkdir -p /var/log/recon 2>/dev/null || true
+
+if [ ! -f "$LOG_FILE" ]; then
+    touch "$LOG_FILE"
+    chown root:reconlog "$LOG_FILE" 2>/dev/null || true
+    chmod 664 "$LOG_FILE" 2>/dev/null || true
+fi
 
 #####################################################################
 # Logger
