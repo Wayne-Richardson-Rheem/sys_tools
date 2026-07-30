@@ -1,120 +1,230 @@
 #!/bin/bash
 
-#***********************************************************************************************************************
-# Wi-Fi wathdog ensures wlan0 stays connected via NetworkManager using dynamic connection detetion
-#***********************************************************************************************************************
+#####################################################################
+# Wi-Fi Monitoring Watchdog
+#
+# Purpose:
+#   Observe and log Wi-Fi state for troubleshooting.
+#
+# This script NEVER:
+#   - Activates connections
+#   - Disconnects connections
+#   - Modifies Wi-Fi state
+#   - Modifies NetworkManager
+#
+# Safe to run alongside:
+#   wifi-ap.sh
+#   connect.py
+#   recon-ap-connect.sh
+#####################################################################
 
 INTERFACE="wlan0"
+LOG_TAG="wifi-watchdog"
+LOG_FILE="/var/log/recon/wifi-watchdog.log"
 
-#***********************************************************************************************************************
-# Use the journalctl logger functionality
-#***********************************************************************************************************************
+mkdir -p /var/log/recon
+touch "$LOG_FILE"
+
+#####################################################################
+# Logger
+#####################################################################
+
 log()
 {
-  logger -t "wifi-watchdog" "$1"
+    local msg
+    msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "$msg" >> "$LOG_FILE"
+    logger -t "$LOG_TAG" "$1"
 }
 
+#####################################################################
+# NetworkManager State
+#####################################################################
 
-#***********************************************************************************************************************
-# Try to get an active connection name
-#***********************************************************************************************************************
-get_active_connection_name()
+get_nm_state()
 {
-  #*********************************************************************************************************************
-  # Try to get the active connection for wlan0
-  #*********************************************************************************************************************
-  nmcli -t -f NAME,DEVICE connection show --active | grep ":${INTERFACE}$" | cut -d: -f1
+    nmcli -g GENERAL.STATE device show "$INTERFACE" 2>/dev/null
 }
 
+#####################################################################
+# Active Connection Name
+#####################################################################
 
-#***********************************************************************************************************************
-# Disable the power save for the Wi-Fi 
-#***********************************************************************************************************************
-disable_power_save()
+get_active_connection()
 {
-  local power_save
-  power_save=$(iw "$INTERFACE" get power_save 2>/dev/null | awk '{print $N}')
-
-  if [ "$power_save" = "on" ]; then
-    iw dev "$NTERFACE" set power_save off
-    log "Power Management was on -> Set to Off"
-  fi
+    nmcli -g GENERAL.CONNECTION device show "$INTERFACE" 2>/dev/null
 }
 
+#####################################################################
+# IPv4 Address
+#####################################################################
 
-
-#***********************************************************************************************************************
-# Log the current state of the Wi-Fi 
-#***********************************************************************************************************************
-log_monitor_data()
+get_ip()
 {
-  local signal power_save disconnectes
-
-  # Signal Strength
-  signal=$(iwconfig "$INTERFACE" 2>/dev/null | grep -i 'Signal level' | awk -F '=' '{print $3}' | awk '{print $1}')
-
-  # Power save status
-  power_save=$(iw "$INTERFACE" get power_save 2>/dev/null | awk '{print $NF}')
-
-  # Recent disconnect events
-  disconnects=$(journalctl -u NetworkManager -n 20 | grep -i 'disconnected')
-
-  log "Signal: ${signal:-N/A} dBm | power save: ${power_save:-N/A}"
-
-  if [ -n "$disconnects" ]; then
-    log "Recent disconnect events:"
-    while read r line; do
-      log " $line"
-    done <<< "$disconnects"
-  fi
+    nmcli -g IP4.ADDRESS device show "$INTERFACE" 2>/dev/null | head -n1
 }
 
+#####################################################################
+# Gateway
+#####################################################################
 
-#***********************************************************************************************************************
-# Check for active connection for wlan0 and if found, exit.  If not found, search for a previous saved
-# profile and try to connect to that one
-#***********************************************************************************************************************
-check_and_reconnect()
+get_gateway()
 {
-  local conn_name
-  conn_name=$(get_active_connection_name)
+    nmcli -g IP4.GATEWAY device show "$INTERFACE" 2>/dev/null | head -n1
+}
 
-  if [ -z "$conn_name" ]; then
-    #*******************************************************************************************************************
-    # No active connection, try to find a saved Wi-Fi profile for wlan
-    #*******************************************************************************************************************
-    conn_name=$(nmcli -t -f NAME,TYPE,DEVICE connection show | grep "802-11-wireless:" | cut -d: -f1 | head -n1)
+#####################################################################
+# Signal Strength (dBm)
+#####################################################################
 
-    if [ -n "$conn_name" ]; then
-      #*****************************************************************************************************************
-      # A previous Wi-Fi profile for the wlan0 has been found
-      #*****************************************************************************************************************
-      log "Wi-Fi not connected.  Attempting to reconnect using profile: ${conn_name}"
-      nmcli connection up "${conn_name}"
-    else
-      log "No saved Wi-Fi profiles found for ${INTERFACE}.  Cannot reconnect."
+get_signal()
+{
+    iw dev "$INTERFACE" link 2>/dev/null | \
+        awk '/signal:/ {print $2}'
+}
+
+#####################################################################
+# Associated BSSID
+#####################################################################
+
+get_bssid()
+{
+    iw dev "$INTERFACE" link 2>/dev/null | \
+        awk '/Connected to/ {print $3}'
+}
+
+#####################################################################
+# Power Save Status
+#####################################################################
+
+get_power_save()
+{
+    iw dev "$INTERFACE" get power_save 2>/dev/null | \
+        awk '{print $NF}'
+}
+
+#####################################################################
+# Tx Retry Counter
+#####################################################################
+
+get_tx_retries()
+{
+    iwconfig "$INTERFACE" 2>/dev/null | \
+        sed -n 's/.*Tx excessive retries:\([0-9]*\).*/\1/p'
+}
+
+#####################################################################
+# Log Recent NM Events
+#####################################################################
+
+log_recent_events()
+{
+    local events
+
+    events=$(
+        journalctl -u NetworkManager \
+        --since "-5 min" \
+        --no-pager 2>/dev/null | \
+        grep -Ei 'disconnect|deauth|fail|timeout|supplicant|dhcp'
+    )
+
+    if [ -n "$events" ]; then
+        log "Recent NetworkManager events:"
+
+        while IFS= read -r line
+        do
+            log "  $line"
+        done <<< "$events"
     fi
-  fi
 }
 
+#####################################################################
+# Current Status Snapshot
+#####################################################################
 
+log_state()
+{
+    local state
+    local conn
+    local ip
+    local gw
+    local signal
+    local bssid
+    local power
+    local retries
 
-#***********************************************************************************************************************
-# Run
-#***********************************************************************************************************************
-log "Starting Wi-Fi Watchdog + Monitor (journalctl only)"
-check_and_reconnect
-disable_power_save
-log_monitor_data
+    state=$(get_nm_state)
+    conn=$(get_active_connection)
+    ip=$(get_ip)
+    gw=$(get_gateway)
+    signal=$(get_signal)
+    bssid=$(get_bssid)
+    power=$(get_power_save)
+    retries=$(get_tx_retries)
 
+    log "STATE=${state:-unknown}"
+    log "CONNECTION=${conn:-none}"
+    log "IP=${ip:-none}"
+    log "GATEWAY=${gw:-none}"
+    log "BSSID=${bssid:-none}"
+    log "SIGNAL=${signal:-unknown} dBm"
+    log "POWERSAVE=${power:-unknown}"
+    log "TX_RETRIES=${retries:-unknown}"
 
-#***********************************************************************************************************************
-# Check every 5 minutes
-#***********************************************************************************************************************
-while true; do
+    if [ -n "$gw" ]; then
+        if ping -c1 -W1 "$gw" >/dev/null 2>&1; then
+            log "GATEWAY_PING=OK"
+        else
+            log "GATEWAY_PING=FAILED"
+        fi
+    else
+        log "GATEWAY_PING=N/A"
+    fi
+}
+
+#####################################################################
+# State Change Detection
+#####################################################################
+
+LAST_STATE=""
+LAST_CONN=""
+
+check_transitions()
+{
+    local state
+    local conn
+
+    state=$(get_nm_state)
+    conn=$(get_active_connection)
+
+    if [ "$state" != "$LAST_STATE" ]; then
+        log "STATE_CHANGE: '${LAST_STATE}' -> '${state}'"
+        LAST_STATE="$state"
+    fi
+
+    if [ "$conn" != "$LAST_CONN" ]; then
+        log "CONNECTION_CHANGE: '${LAST_CONN}' -> '${conn}'"
+        LAST_CONN="$conn"
+    fi
+}
+
+#####################################################################
+# Startup
+#####################################################################
+
+log "========================================================"
+log "Wi-Fi monitoring watchdog started"
+log "========================================================"
+
+#####################################################################
+# Main Loop
+#####################################################################
+
+while true
+do
+    check_transitions
+    log_state
+    log_recent_events
+
     sleep 300
-    check_and_reconnect
-    disable_power_save
-    log_monitor_data
 done
-
