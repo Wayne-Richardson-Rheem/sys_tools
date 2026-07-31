@@ -58,7 +58,12 @@ if [[ "$response" == "y" || "$response" == "Y" ]]; then
       #*****************************************************************************************************************
       # Setup the user's network info for the device and then delete the preconfigured.nmconnection
       #*****************************************************************************************************************
-      sudo rm /etc/NetworkManager/system-connections/*.nmconnection
+      # Preserve provisioning and USB gadget profiles
+      sudo find /etc/NetworkManager/system-connections \
+          -name "*.nmconnection" \
+          ! -name "usb-gadget.nmconnection" \
+          ! -name "recon-ap.nmconnection" \
+          -delete
       echo ""
       read -p "Using nmtui to add the networking SSID and Password. Press Enter key to continue" anykey
       sudo nmtui
@@ -401,21 +406,62 @@ fi
 
 
 #*************************************************************************************************************
-# Setup the RPI connect
+# Setup Raspberry Pi Connect
 #*************************************************************************************************************
 echo ""
-echo "Setting up Rpi Connect for remote connectivity. You will need to follow the instructions on the screen to register the device."
-read -p "Press Enter key once device has been registered. " anykey
-# Enable the linger option
-loginctl enable-linger
+echo "================================================================="
+echo "Raspberry Pi Connect Setup"
+echo "================================================================="
+echo ""
+echo "Follow the instructions from rpi-connect to register this device."
+read -p "Press Enter to continue..." anykey
+# Allow rpi-connect to remain active after logout
+sudo loginctl enable-linger rheemtest
 systemctl --user start rpi-connect.service
-rpi-connect signout
+rpi-connect signout || true
 rpi-connect signin
+
+
+#*************************************************************************************************************
+# Setup Tailscale hostname if connected
+#*************************************************************************************************************
+if command -v tailscale >/dev/null 2>&1; then
+  if tailscale status >/dev/null 2>&1; then
+    echo ""
+    echo "Updating Tailscale hostname..."
+    sudo tailscale set --hostname="$NEW_HOSTNAME" 2>/dev/null || true
+  fi
+fi
+
+
+#*************************************************************************************************************
+# Setup Tailscale
+#*************************************************************************************************************
+echo ""
+echo "================================================================="
+echo "Tailscale Setup"
+echo "================================================================="
+echo ""
+
+echo "This device can optionally be joined to your Tailscale network."
+read -p "Configure Tailscale now (y/n)? " response
+if [[ "$response" == "y" || "$response" == "Y" ]]; then
+  echo ""
+  echo "Starting Tailscale enrollment..."
+  sudo tailscale up --ssh
+  echo ""
+  echo "Current Tailscale status:"
+  tailscale status
+  echo ""
+  read -p "Verify Tailscale enrollment completed. Press Enter to continue..." anykey
+else
+  echo "Skipping Tailscale setup"
+fi
+
 
 #*********************************************************************************************************************
 # System is configured, so halt
 #*********************************************************************************************************************
 echo ""
-read -p "System setup was successful. System will now be shutdown.  Press Enter key to shut system down" anykey
+read -p "System setup was successful. System will now be shutdown. Press Enter to continue..." anykey
 sudo halt
-

@@ -214,6 +214,22 @@ check_transitions()
 }
 
 #####################################################################
+# Tailscale status
+#####################################################################
+
+get_tailscale_state()
+{
+    tailscale status >/dev/null 2>&1
+
+    if [ $? -eq 0 ]; then
+        echo "ONLINE"
+    else
+        echo "OFFLINE"
+    fi
+}
+
+
+#####################################################################
 # Startup
 #####################################################################
 
@@ -227,9 +243,10 @@ log "========================================================"
 
 while true
 do
-    check_transitions
-    log_state
-    log_recent_events
+  check_transitions
+  log_state
+  log_recent_events
+  log "TAILSCALE=$(get_tailscale_state)"
 
-    sleep 300
+  sleep 300
 done

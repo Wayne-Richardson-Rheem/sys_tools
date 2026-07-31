@@ -1323,6 +1323,73 @@ sudo touch "$BUILD_ROOT/var/log/recon/wifi-watchdog.log"
 sudo chown root:reconlog "$BUILD_ROOT/var/log/recon/wifi-watchdog.log"
 sudo chmod 664 "$BUILD_ROOT/var/log/recon/wifi-watchdog.log"
 
+# Install Tailscale repository
+sudo mkdir -p "$BUILD_ROOT/usr/share/keyrings"
+
+curl -fsSL \
+  https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \
+  | sudo tee \
+      "$BUILD_ROOT/usr/share/keyrings/tailscale-archive-keyring.gpg" \
+      >/dev/null
+
+curl -fsSL \
+  https://pkgs.tailscale.com/stable/debian/trixie.tailscale-keyring.list \
+  | sudo tee \
+      "$BUILD_ROOT/etc/apt/sources.list.d/tailscale.list" \
+      >/dev/null
+
+sudo mkdir -p \
+"$BUILD_ROOT/etc/systemd/system/multi-user.target.wants"
+
+sudo ln -sf \
+/lib/systemd/system/tailscaled.service \
+"$BUILD_ROOT/etc/systemd/system/multi-user.target.wants/tailscaled.service"
+
+sudo install -m 0755 \
+  "$REALHOME/sys_tools/tailscale-init.sh" \
+  "$BUILD_ROOT/usr/local/bin/tailscale-init.sh"
+
+
+########################################################################
+# Enable OTA timers
+########################################################################
+
+sudo mkdir -p "$BUILD_ROOT/etc/systemd/system/timers.target.wants"
+
+for timer in \
+    expander-ota.timer \
+    laptopkiller-ota.timer \
+    logfile_xfr-ota.timer
+do
+  if [ -f "$BUILD_ROOT/lib/systemd/system/$timer" ] || \
+     [ -f "$BUILD_ROOT/usr/lib/systemd/system/$timer" ]; then
+
+       sudo ln -sf \
+         "/lib/systemd/system/$timer" \
+         "$BUILD_ROOT/etc/systemd/system/timers.target.wants/$timer"
+       info "Enabled $timer"
+  else
+      warn "Timer not found in image: $timer"
+  fi
+done
+
+########################################################################
+# Install system-setup.sh
+########################################################################
+
+SYSTEM_SETUP_SRC="$REALHOME/sys_tools/system_setup.sh"
+
+if [[ -f "$SYSTEM_SETUP_SRC" ]]; then
+    sudo mkdir -p "$BUILD_ROOT/usr/local/recon"
+
+    sudo install -m 0755 \
+        "$SYSTEM_SETUP_SRC" \
+        "$BUILD_ROOT/usr/local/recon/system_setup.sh"
+else
+    warn "Missing system-setup.sh source: $SYSTEM_SETUP_SRC"
+fi
+
+
 # Normalize Laptop Killer service to the /opt -> /data app layout and ensure
 # it is enabled in the image when the unit exists.
 for lk_unit in laptop_killer.service laptopkiller.service; do
