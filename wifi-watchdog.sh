@@ -119,6 +119,47 @@ get_tx_retries()
 }
 
 #####################################################################
+# Get the wlan0 link information
+#####################################################################
+
+get_link_info()
+{
+    iw dev wlan0 link 2>/dev/null
+}
+
+#####################################################################
+# Get the Wi-Fi Station Statistics
+#####################################################################
+
+get_station_info()
+{
+    iw dev wlan0 station dump 2>/dev/null
+}
+
+#####################################################################
+# Get the NetworkManager Disconnect Reason
+#####################################################################
+
+get_nm_reason()
+{
+    nmcli -g GENERAL.REASON device show wlan0 2>/dev/null
+}
+
+#####################################################################
+# Check Internet reachability
+#####################################################################
+
+check_internet()
+{
+    ping -c 2 -W 3 8.8.8.8 >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "OK"
+    else
+        echo "FAILED"
+    fi
+}
+
+#####################################################################
 # Log Recent NM Events
 #####################################################################
 
@@ -184,6 +225,50 @@ log_state()
         fi
     else
         log "GATEWAY_PING=N/A"
+    fi
+
+    #################################################################
+    # Internet connectivity test
+    #################################################################
+
+    if ping -c2 -W2 8.8.8.8 >/dev/null 2>&1; then
+        log "INTERNET_PING=OK"
+    else
+        log "INTERNET_PING=FAILED"
+    fi
+
+    #################################################################
+    # Wi-Fi link details
+    #################################################################
+
+    log "Wi-Fi Link Information:"
+
+    iw dev wlan0 link 2>/dev/null | while read -r line; do
+        log "  $line"
+    done
+
+    #################################################################
+    # Wi-Fi station statistics
+    #################################################################
+
+    log "Wi-Fi Station Information:"
+
+    iw dev wlan0 station dump 2>/dev/null | while read -r line; do
+        case "$line" in
+            *signal:*|*tx\ bitrate:*|*rx\ bitrate:*|*tx\ retries:*|*tx\ failed:*|*beacon\ loss:*|*inactive\ time:*|*connected\ time:*|*rx\ packets:*|*tx\ packets:*)
+                log "  $line"
+                ;;
+        esac
+    done
+
+    #################################################################
+    # NetworkManager reason code
+    #################################################################
+
+    nm_reason=$(nmcli -g GENERAL.REASON device show wlan0 2>/dev/null)
+
+    if [ -n "$nm_reason" ]; then
+        log "NM_REASON=$nm_reason"
     fi
 }
 
