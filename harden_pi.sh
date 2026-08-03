@@ -1345,9 +1345,9 @@ sudo ln -sf \
 /lib/systemd/system/tailscaled.service \
 "$BUILD_ROOT/etc/systemd/system/multi-user.target.wants/tailscaled.service"
 
-sudo install -m 0755 \
-  "$REALHOME/sys_tools/tailscale-init.sh" \
-  "$BUILD_ROOT/usr/local/bin/tailscale-init.sh"
+#sudo install -m 0755 \
+#  "$REALHOME/sys_tools/tailscale-init.sh" \
+#  "$BUILD_ROOT/usr/local/bin/tailscale-init.sh"
 
 
 ########################################################################
