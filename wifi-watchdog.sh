@@ -218,7 +218,7 @@ log_state()
     log "TX_RETRIES=${retries:-unknown}"
 
     if [ -n "$gw" ]; then
-        if ping -c1 -W1 "$gw" >/dev/null 2>&1; then
+        if ping -c3 -W1 "$gw" >/dev/null 2>&1; then
             log "GATEWAY_PING=OK"
         else
             log "GATEWAY_PING=FAILED"
