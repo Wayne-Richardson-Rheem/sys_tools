@@ -1354,24 +1354,27 @@ sudo ln -sf \
 # Enable OTA timers
 ########################################################################
 
-sudo mkdir -p "$BUILD_ROOT/etc/systemd/system/timers.target.wants"
+SYSTEMD_DIR="$BUILD_ROOT/etc/systemd/system"
+sudo mkdir -p "$SYSTEMD_DIR/timers.target.wants"
 
 for timer in \
     expander-ota.timer \
     laptopkiller-ota.timer \
-    logfile_xfr-ota.timer
+    logfile-xfr-ota.timer
 do
-  if [ -f "$BUILD_ROOT/lib/systemd/system/$timer" ] || \
-     [ -f "$BUILD_ROOT/usr/lib/systemd/system/$timer" ]; then
+    if [[ -f "$SYSTEMD_DIR/$timer" ]]; then
 
-       sudo ln -sf \
-         "/lib/systemd/system/$timer" \
-         "$BUILD_ROOT/etc/systemd/system/timers.target.wants/$timer"
-       info "Enabled $timer"
-  else
-      warn "Timer not found in image: $timer"
-  fi
+        sudo ln -sfn \
+            "../$timer" \
+            "$SYSTEMD_DIR/timers.target.wants/$timer"
+
+        info "Enabled $timer"
+
+    else
+        warn "Timer not found in image: $timer"
+    fi
 done
+
 
 ########################################################################
 # Install system-setup.sh
