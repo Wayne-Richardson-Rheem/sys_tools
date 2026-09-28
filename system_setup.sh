@@ -252,30 +252,21 @@ while true; do
   fi
 done
 
-# Change the FTP remote path
+# Set the FTP remote path, independent of its current value
 echo ""
-echo "Modifying the SFTP Remote path system type in the sys_config.txt file"
-project_cmd="sed -i \"s/Testing/$system_model/g\" \"/data/laptopkiller/runtime/config/sys_config.txt\""
-echo "Issuing command: $project_cmd"
-if eval "$project_cmd"; then
-  echo "Changing system type succeeded"
+echo "Modifying FTP_REMOTE_PATH in the sys_config.txt file"
+ftp_remote_path="/$system_model/$lower_first_name-$lower_last_name/"
+ftp_path_cmd="sed -i \"s|^FTP_REMOTE_PATH=.*|FTP_REMOTE_PATH=$ftp_remote_path|\" \"/data/laptopkiller/runtime/config/sys_config.txt\""
+echo "Issuing command: $ftp_path_cmd"
+if eval "$ftp_path_cmd"; then
+  echo "FTP remote path change succeeded"
 else
-  echo "Changing system type failed"
-fi
-
-echo ""
-echo "Modifying the SFTP Remote path homeowner's name in the sys_config.txt file"
-homeowner_cmd="sed -i \"s/rpiz2w-dev/$lower_first_name-$lower_last_name/g\" \"/data/laptopkiller/runtime/config/sys_config.txt\""
-echo "Issuing command: $homeowner_cmd"
-if eval "$homeowner_cmd"; then
-  echo "Changing home owner's name succeeded"
-else
-  echo "Changing home owner's name failed"
+  echo "FTP remote path change failed"
 fi
 
 echo ""
 echo "Modifying the SYSTEM_MODEL in the sys_config.txt file"
-sys_model_cmd="sed -i \"s/SYSTEM_MODEL=M1-Heat-Pump/SYSTEM_MODEL=$system_model/g\" \"/data/laptopkiller/runtime/config/sys_config.txt\""
+sys_model_cmd="sed -i \"s|^SYSTEM_MODEL=.*|SYSTEM_MODEL=$system_model|\" \"/data/laptopkiller/runtime/config/sys_config.txt\""
 echo "Issuing command: $sys_model_cmd"
 if eval "$sys_model_cmd"; then
   echo "System Model change succeeded"
