@@ -18,17 +18,20 @@
 #   recon-ap-connect.sh
 #####################################################################
 
+#####################################################################
+# Recovery configuration
+#####################################################################
+
+DISCONNECT_FILE="/var/run/wifi-watchdog-disconnected"
+NETWORKMANAGER_RESTART_FILE="/var/run/wifi-watchdog-nm-restarted"
+DISCONNECT_THRESHOLD_HOURS=12
+
 INTERFACE="wlan0"
 LOG_TAG="wifi-watchdog"
 LOG_FILE="/var/log/recon/wifi-watchdog.log"
 
-mkdir -p /var/log/recon 2>/dev/null || true
-
-if [ ! -f "$LOG_FILE" ]; then
-    touch "$LOG_FILE"
-    chown root:reconlog "$LOG_FILE" 2>/dev/null || true
-    chmod 664 "$LOG_FILE" 2>/dev/null || true
-fi
+mkdir -p /var/log/recon
+touch "$LOG_FILE"
 
 #####################################################################
 # Logger
@@ -40,6 +43,80 @@ log()
     msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
     echo "$msg" >> "$LOG_FILE"
     logger -t "$LOG_TAG" "$1"
+}
+
+#####################################################################
+# Recovery Ladder
+#####################################################################
+
+recovery_ladder()
+{
+    local state
+    local now
+    local start_time
+    local offline_seconds
+    local offline_hours
+
+    state=$(get_nm_state)
+
+    #
+    # Connected
+    #
+    if echo "$state" | grep -q "100 (connected)"; then
+
+        rm -f "$DISCONNECT_FILE"
+        rm -f "$NETWORKMANAGER_RESTART_FILE"
+
+        return
+    fi
+
+    #
+    # First detection of offline condition
+    #
+    now=$(date +%s)
+
+    if [ ! -f "$DISCONNECT_FILE" ]; then
+        echo "$now" > "$DISCONNECT_FILE"
+        log "Started disconnect timer"
+        return
+    fi
+
+    start_time=$(cat "$DISCONNECT_FILE")
+
+    offline_seconds=$((now - start_time))
+    offline_hours=$((offline_seconds / 3600))
+
+    log "OFFLINE_DURATION=${offline_hours}h"
+
+    #
+    # 12 hour threshold
+    #
+    if [ "$offline_hours" -ge "$DISCONNECT_THRESHOLD_HOURS" ]; then
+
+        #
+        # First action: restart NetworkManager
+        #
+        if [ ! -f "$NETWORKMANAGER_RESTART_FILE" ]; then
+
+            log "RECOVERY_ACTION=Restarting NetworkManager after ${offline_hours}h offline"
+
+            touch "$NETWORKMANAGER_RESTART_FILE"
+
+            systemctl restart NetworkManager
+
+            return
+        fi
+
+        #
+        # NetworkManager already restarted
+        # Still offline -> reboot
+        #
+        log "RECOVERY_ACTION=Rebooting system after failed NetworkManager recovery"
+
+        sync
+
+        systemctl reboot
+    fi
 }
 
 #####################################################################
@@ -119,47 +196,6 @@ get_tx_retries()
 }
 
 #####################################################################
-# Get the wlan0 link information
-#####################################################################
-
-get_link_info()
-{
-    iw dev wlan0 link 2>/dev/null
-}
-
-#####################################################################
-# Get the Wi-Fi Station Statistics
-#####################################################################
-
-get_station_info()
-{
-    iw dev wlan0 station dump 2>/dev/null
-}
-
-#####################################################################
-# Get the NetworkManager Disconnect Reason
-#####################################################################
-
-get_nm_reason()
-{
-    nmcli -g GENERAL.REASON device show wlan0 2>/dev/null
-}
-
-#####################################################################
-# Check Internet reachability
-#####################################################################
-
-check_internet()
-{
-    ping -c 2 -W 3 8.8.8.8 >/dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        echo "OK"
-    else
-        echo "FAILED"
-    fi
-}
-
-#####################################################################
 # Log Recent NM Events
 #####################################################################
 
@@ -176,6 +212,52 @@ log_recent_events()
 
     if [ -n "$events" ]; then
         log "Recent NetworkManager events:"
+
+        while IFS= read -r line
+        do
+            log "  $line"
+        done <<< "$events"
+    fi
+}
+
+#####################################################################
+# Get the reason the I/F failed
+#####################################################################
+
+get_reason()
+{
+    nmcli -g GENERAL.REASON device show "$INTERFACE" 2>/dev/null
+}
+
+
+#####################################################################
+# Get the link state
+#####################################################################
+
+get_link_state()
+{
+    iw dev "$INTERFACE" link 2>/dev/null
+}
+
+
+#####################################################################
+# Log Kernel Wi-Fi events
+#####################################################################
+
+log_kernel_wifi_events()
+{
+    local events
+
+    events=$(
+        journalctl -k \
+        --since "-5 min" \
+        --no-pager 2>/dev/null | \
+        grep -Ei \
+        'wlan0|brcm|brcmfmac|deauth|disconnect|firmware'
+    )
+
+    if [ -n "$events" ]; then
+        log "Recent kernel Wi-Fi events:"
 
         while IFS= read -r line
         do
@@ -218,57 +300,13 @@ log_state()
     log "TX_RETRIES=${retries:-unknown}"
 
     if [ -n "$gw" ]; then
-        if ping -c3 -W1 "$gw" >/dev/null 2>&1; then
+        if ping -c1 -W1 "$gw" >/dev/null 2>&1; then
             log "GATEWAY_PING=OK"
         else
             log "GATEWAY_PING=FAILED"
         fi
     else
         log "GATEWAY_PING=N/A"
-    fi
-
-    #################################################################
-    # Internet connectivity test
-    #################################################################
-
-    if ping -c2 -W2 8.8.8.8 >/dev/null 2>&1; then
-        log "INTERNET_PING=OK"
-    else
-        log "INTERNET_PING=FAILED"
-    fi
-
-    #################################################################
-    # Wi-Fi link details
-    #################################################################
-
-    log "Wi-Fi Link Information:"
-
-    iw dev wlan0 link 2>/dev/null | while read -r line; do
-        log "  $line"
-    done
-
-    #################################################################
-    # Wi-Fi station statistics
-    #################################################################
-
-    log "Wi-Fi Station Information:"
-
-    iw dev wlan0 station dump 2>/dev/null | while read -r line; do
-        case "$line" in
-            *signal:*|*tx\ bitrate:*|*rx\ bitrate:*|*tx\ retries:*|*tx\ failed:*|*beacon\ loss:*|*inactive\ time:*|*connected\ time:*|*rx\ packets:*|*tx\ packets:*)
-                log "  $line"
-                ;;
-        esac
-    done
-
-    #################################################################
-    # NetworkManager reason code
-    #################################################################
-
-    nm_reason=$(nmcli -g GENERAL.REASON device show wlan0 2>/dev/null)
-
-    if [ -n "$nm_reason" ]; then
-        log "NM_REASON=$nm_reason"
     fi
 }
 
@@ -297,6 +335,7 @@ check_transitions()
         LAST_CONN="$conn"
     fi
 }
+
 
 #####################################################################
 # Tailscale status
@@ -328,10 +367,22 @@ log "========================================================"
 
 while true
 do
-  check_transitions
-  log_state
-  log_recent_events
-  log "TAILSCALE=$(get_tailscale_state)"
-
-  sleep 300
+    check_transitions
+    log_state
+    log_recent_events
+    reason=$(get_reason)
+    log "REASON=${reason:-unknown}"
+    log "LINK_STATE:"
+    get_link_state | while read -r line
+    do
+        log "  $line"
+    done
+    log_kernel_wifi_events
+    log "TAILSCALE=$(get_tailscale_state)"
+    recovery_ladder
+    sleep 300
 done
+
+
+
+
