@@ -5,14 +5,23 @@ FAIL=0
 
 echo "[CHECK] Scanning system for sensitive material..."
 
-# --- SSH ---
-if [ -d ~/.ssh ]; then
-  if ls ~/.ssh | grep -vq '^known_hosts$'; then
-    echo "❌ SSH private keys detected"
-    FAIL=1
-  else
-    echo "✅ SSH directory clean"
-  fi
+# --- SSH PRIVATE KEYS ---
+SSH_DIR="$HOME/.ssh"
+
+if [ -d "$SSH_DIR" ]; then
+    PRIVATE_KEYS=$(grep -aEl \
+        '-----BEGIN (OPENSSH|RSA|EC|DSA|PRIVATE) KEY-----' \
+        "$SSH_DIR"/* 2>/dev/null || true)
+
+    if [ -n "$PRIVATE_KEYS" ]; then
+        echo "❌ SSH private keys detected:"
+        echo "$PRIVATE_KEYS"
+        FAIL=1
+    else
+        echo "✅ No SSH private keys detected"
+    fi
+else
+    echo "✅ No SSH directory"
 fi
 
 # --- GPG PRIVATE KEYS ---
