@@ -102,7 +102,7 @@ while true; do
   echo "3 - Falcon"
   echo "4 - Jaguar"
   echo "5 - A2LJaguar"
-  echo "6 - Grizzly"
+  echo "6 - Grizzly/Legacy"
   echo "7 - Resi-Pack Furnace"
   echo "8 - T-Rex"
   echo "9 - Hurricane"
@@ -124,7 +124,7 @@ while true; do
     elif [ "$sys_type" -eq 5 ]; then
       echo "A2L Jaguar system was selected"
     elif [ "$sys_type" -eq 6 ]; then
-      echo "Grizzly system was selected"
+      echo "Grizzly/Legacy system was selected"
     elif [ "$sys_type" -eq 7 ]; then
       echo "Resi-Pack system Furnaace was selected"
     elif [ "$sys_type" -eq 8 ]; then
@@ -202,7 +202,7 @@ while true; do
         copy_cmd="cp /data/laptopkiller/runtime/config/grizzly.list /data/laptopkiller/runtime/config/data_config.txt"
         echo "$copy_cmd"
         if eval "$copy_cmd"; then
-          echo "Command succeeded, Grizzly variables are set"
+          echo "Command succeeded, Grizzly/Legacy variables are set"
           break
         else
           echo "Command failed"
